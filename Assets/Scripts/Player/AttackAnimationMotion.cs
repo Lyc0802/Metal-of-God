@@ -7,18 +7,23 @@ public sealed class AttackAnimationMotion : MonoBehaviour
 {
     public AnimationCurve LocalX=AnimationCurve.Constant(0,1,0);
     public AnimationCurve LocalZ=AnimationCurve.Constant(0,1,0);
+    public AnimationCurve ReturnLocalX=AnimationCurve.Constant(0,1,0);
+    public AnimationCurve ReturnLocalZ=AnimationCurve.Constant(0,1,0);
     public Transform Visual;
     private PlayerCombat combat;
     private Rigidbody body;
     private bool active;
+    private int sequence=-1;
     private Vector3 previous;
     private Quaternion facing;
     private void OnEnable(){combat=GetComponent<PlayerCombat>();body=GetComponent<Rigidbody>();active=false;}
     private void FixedUpdate()
     {
         if(!combat.IsAttacking){active=false;return;}
-        if(!active){active=true;previous=new Vector3(LocalX.Evaluate(0),0,LocalZ.Evaluate(0));facing=body.rotation;}
-        var sample=new Vector3(LocalX.Evaluate(combat.SwingProgress),0,LocalZ.Evaluate(combat.SwingProgress));
+        var x=combat.AttackIndex==1?ReturnLocalX:LocalX;
+        var z=combat.AttackIndex==1?ReturnLocalZ:LocalZ;
+        if(!active || sequence!=combat.SwingSequence){active=true;sequence=combat.SwingSequence;previous=new Vector3(x.Evaluate(0),0,z.Evaluate(0));facing=body.rotation;}
+        var sample=new Vector3(x.Evaluate(combat.SwingProgress),0,z.Evaluate(combat.SwingProgress));
         var delta=facing*((sample-previous)*(Visual?Visual.lossyScale.y:1));previous=sample;
         float distance=delta.magnitude;
         if(distance<.00001f)return;

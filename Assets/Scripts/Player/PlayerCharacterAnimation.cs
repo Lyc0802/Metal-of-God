@@ -8,6 +8,7 @@ public sealed class PlayerCharacterAnimation : MonoBehaviour
     public float MovementBlendTime = .12f, WalkReferenceSpeed = 1.9f, RunReferenceSpeed = 5.1f;
     public float MaximumWalkRate = 2.5f, MaximumRunRate = 2.5f;
     public float ReturnBlendTime = .15f, AttackBlendTime = .065f;
+    public float ComboBlendTime = .045f;
     private PlayerMovement movement;
     private PlayerCombat combat;
     private PlayerHealth health;
@@ -43,14 +44,15 @@ public sealed class PlayerCharacterAnimation : MonoBehaviour
         a.SetFloat("WalkRate",Mathf.Clamp(TargetWalkRate/directionalStride,.35f,2.5f),.12f,Time.deltaTime);
         bool grounded=movement.IsGrounded && body.linearVelocity.y<.8f;
         a.SetBool("IsGrounded",grounded); a.SetFloat("VerticalVelocity",body.linearVelocity.y,.06f,Time.deltaTime);
-        a.SetBool("IsAttacking",combat.IsAttacking); a.SetFloat("AttackProgress",combat.SwingProgress);
+        a.SetBool("IsAttacking",combat.IsAttacking);
         if (grounded && !wasGrounded && previousVertical < -1.5f) landingUntil=Time.time+.26f;
-        string next=combat.IsAttacking ? "Sword Attack" : movement.IsPreparingJump ? "Jump Anticipation"
+        string next=combat.IsAttacking ? (combat.AttackIndex==1 ? "Sword Attack Return" : "Sword Attack") : movement.IsPreparingJump ? "Jump Anticipation"
             : !grounded ? (body.linearVelocity.y > .15f ? "Jump Ascending" : "Fall Descending")
             : Time.time<landingUntil ? "Landing" : "Locomotion";
-        if (next!=state)
+        if (combat.IsAttacking) ApplyAttackPose();
+        else if (next!=state)
         {
-            a.CrossFadeInFixedTime(next,next=="Sword Attack" ? AttackBlendTime : next=="Landing" ? .055f : ReturnBlendTime,0,0);
+            a.CrossFadeInFixedTime(next,combat.IsAttacking ? AttackBlendTime : next=="Landing" ? .055f : ReturnBlendTime,0,0);
             state=next;
         }
         wasGrounded=grounded; previousVertical=body.linearVelocity.y;
@@ -59,7 +61,25 @@ public sealed class PlayerCharacterAnimation : MonoBehaviour
     {
         // Combat advances after Update; trails must see the same sampled hand pose.
         if (CharacterAnimator && combat.IsAttacking)
-        { CharacterAnimator.SetFloat("AttackProgress",combat.SwingProgress); CharacterAnimator.Update(0); }
+        {
+            ApplyAttackPose();
+            CharacterAnimator.Update(0);
+        }
+    }
+    private void ApplyAttackPose()
+    {
+        bool returning=combat.AttackIndex==1;
+        string next=returning?"Sword Attack Return":"Sword Attack";
+        // Each state has its own clock. Resetting a shared clock to zero would
+        // rewind the outgoing attack during the crossfade, exposing its ready pose.
+        CharacterAnimator.SetFloat(returning?"AttackProgress":"ReturnAttackProgress",1);
+        CharacterAnimator.SetFloat(returning?"ReturnAttackProgress":"AttackProgress",combat.SwingProgress);
+        if(state!=next)
+        {
+            bool linking=state=="Sword Attack" || state=="Sword Attack Return";
+            CharacterAnimator.CrossFadeInFixedTime(next,linking?ComboBlendTime:AttackBlendTime,0,0);
+            state=next;
+        }
     }
     private void OnDisable() { state=null; }
 }

@@ -95,6 +95,7 @@ public static partial class AssassinMotionAuthoring
                 EditorSceneManager.MarkSceneDirty(bridge.gameObject.scene);
             }
         }
+        BakeReturnSwordAttack(r);
         EditorSceneManager.SaveOpenScenes();
     }
     private static void BackwardReference(Rig r,ReferenceMotion source,bool run,float phase)

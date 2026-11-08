@@ -25,7 +25,17 @@ public class PlayerCombat : MonoBehaviour
     public LayerMask EnemyMask = ~0;
     public bool IsAttacking { get; private set; }
     public float SwingProgress { get; private set; }
-    public bool IsBladeSwinging => IsAttacking && SwingProgress >= HitStart
+    public bool AlternateAttacks;
+    [Min(0)] public float ComboResetDelay = .65f;
+    [Range(0,1)] public float ReturnHitStart = .5f, ReturnHitEnd = .83f;
+    public int AttackIndex { get; private set; }
+    public int SwingSequence { get; private set; }
+    private bool queuedAttack;
+    private int nextAttackIndex;
+    private float lastAttackEnd = float.NegativeInfinity;
+    private float ActiveHitStart => AttackIndex == 1 ? ReturnHitStart : HitStart;
+    private float ActiveHitEnd => AttackIndex == 1 ? ReturnHitEnd : HitEnd;
+    public bool IsBladeSwinging => IsAttacking && SwingProgress >= ActiveHitStart
         && SwingProgress < Mathf.Clamp(
         StrikeEnd,
         .3f,
@@ -55,7 +65,22 @@ public class PlayerCombat : MonoBehaviour
 
     public bool TryAttack()
     {
-        if (IsAttacking || Time.time < nextAttack || !SwordPivot || (health && health.IsDead)
+        if (!CanAttack()) return false;
+        if (IsAttacking)
+        {
+            if (!AlternateAttacks || queuedAttack) return false;
+            queuedAttack = true;
+            return true;
+        }
+        if (Time.time < nextAttack) return false;
+        if (Time.time-lastAttackEnd > ComboResetDelay) nextAttackIndex=0;
+        StartCoroutine(Swing());
+        return true;
+    }
+
+    private bool CanAttack()
+    {
+        if (!SwordPivot || (health && health.IsDead)
             || (metal
             && metal.IsLocked)
             || (controller
@@ -64,13 +89,18 @@ public class PlayerCombat : MonoBehaviour
             return false;
         }
 
-        nextAttack = Time.time + Mathf.Max(AttackCooldown, SwingDuration);
-        StartCoroutine(Swing());
         return true;
     }
 
     private IEnumerator Swing()
     {
+        do
+        {
+        queuedAttack = false;
+        AttackIndex = AlternateAttacks ? nextAttackIndex : 0;
+        nextAttackIndex = 1-AttackIndex;
+        SwingSequence++;
+        nextAttack = Time.time + Mathf.Max(AttackCooldown, SwingDuration);
         IsAttacking = true;
         SwingProgress = 0;
         hitEnemies.Clear();
@@ -95,14 +125,14 @@ public class PlayerCombat : MonoBehaviour
                 SwordPivot.localRotation = rest * Quaternion.Euler(0, angle, 0);
             }
 
-            if (!effectPlayed && t >= HitStart)
+            if (!effectPlayed && t >= ActiveHitStart)
             {
                 effectPlayed = true;
                 SwingEffectTriggered?.Invoke();
             }
 
             // Check the swept time interval so a slow frame cannot skip a short hit window.
-            if (t >= HitStart && previous <= HitEnd)
+            if (t >= ActiveHitStart && previous <= ActiveHitEnd)
             {
                 ApplyHit();
             }
@@ -111,7 +141,7 @@ public class PlayerCombat : MonoBehaviour
             yield return null;
         }
 
-        if (previous <= HitEnd)
+        if (previous <= ActiveHitEnd)
         {
             if (!effectPlayed)
             {
@@ -127,6 +157,13 @@ public class PlayerCombat : MonoBehaviour
         }
 
         SwingProgress = 1;
+        lastAttackEnd = Time.time;
+        // Do not hold IsAttacking after an unqueued strike: movement must unlock
+        // immediately. Late presses still use nextAttackIndex and ComboResetDelay.
+        // At most one follow-up is buffered; holding the button does not auto-combo.
+        while (queuedAttack && Time.time < nextAttack && CanAttack()) yield return null;
+        } while (queuedAttack && CanAttack());
+        queuedAttack = false;
         IsAttacking = false;
     }
 
@@ -216,6 +253,7 @@ public class PlayerCombat : MonoBehaviour
         }
 
         StopAllCoroutines();
+        queuedAttack=false;nextAttackIndex=0;lastAttackEnd=float.NegativeInfinity;
         SwingProgress = 0;
         IsAttacking = false;
         if (AnimateSwordPivot && SwordPivot)
