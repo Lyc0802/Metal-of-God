@@ -1,0 +1,87 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &929806650766547584
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 1.2126527
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.000000016567029
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: -2.4620502
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -6471368528723223875, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_Lightmapping
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: -5076484507258936684, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_Lightmapping
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: -2601552257854514524, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_Lightmapping
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: -1071359958148435772, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_Name
+      value: Assassin Model
+      objectReference: {fileID: 0}
+    - target: {fileID: 2303480242577709337, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+      propertyPath: m_Lightmapping
+      value: 2
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects:
+    - {fileID: 65702495048144492, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+    - {fileID: 3472778375830378061, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+    - {fileID: -750550859352844058, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+    - {fileID: 7125027120329196913, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+    - {fileID: 3472430311517861227, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+    - {fileID: 8904447968811972288, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+    - {fileID: 8603541622604761643, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+    - {fileID: 5392398322951045289, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 95b3e30b599881d49b361d991c3db50c, type: 3}

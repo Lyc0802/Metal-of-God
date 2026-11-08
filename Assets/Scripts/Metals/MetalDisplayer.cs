@@ -1,276 +1,281 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
+using SimpleOutline;
 
+/// <summary>
+/// 管理實體金屬的範圍註冊、顯示與選取 Outline；與 Bronze 偵測獨立。
+/// </summary>
 [RequireComponent(typeof(Renderer))]
-public class MetalDisplayer : MonoBehaviour
+public class MetalDisplayer : OutlineTarget
 {
-    private Renderer _renderer;
-    private Rigidbody _rigidbody;
-    private MaterialPropertyBlock _propertyBlock;
+    public static readonly System.Collections.Generic.HashSet<MetalDisplayer> ActiveMetals = new System.Collections.Generic.HashSet<MetalDisplayer>();
+    private void OnEnable()
+    {
+        ActiveMetals.Add(this);
+    }
 
+    private Rigidbody _rigidbody;
     private bool _isRegistered = false;
     private bool _isDisplayed = false;
     private bool _isHighlighted = false;
-
-    private static readonly int OutlineEnabledID =
-        Shader.PropertyToID("_OutlineEnabled");
-
-    private static readonly int OutlineObjectRadiusID =
-        Shader.PropertyToID("_OutlineObjectRadius");
-
-    private static readonly int OutlineColorID =
-        Shader.PropertyToID("_OutlineColor");
-
-
     [Header("Reference")]
-    [SerializeField] private Transform player;
-
-
+    [SerializeField]
+    private Transform player;
     [Header("Metal Setting")]
     public float weight = 1f;
     private float radius;
+    [Header("Weight Outline Colors")]
+    public bool UseWeightOutlineColors = true;
+    public Color LighterOutlineColor = new Color(.1f, .5f, 1f, 1f);
+    public Color HeavierOutlineColor = new Color(1f, .45f, .08f, 1f);
+    public Color EqualOutlineColor = new Color(.6f, .6f, .6f, 1f);
+    [Range(1f, 3f)]
+    public float SelectedOutlineBrightness = 1.6f;
+    private PlayerMetalManipulator playerMetal;
+    public override Color GetOutlineColor(Color defaultColor)
+    {
+        if (!playerMetal && player)
+        {
+            playerMetal = player.GetComponent<PlayerMetalManipulator>();
+        }
 
+        Color color = base.GetOutlineColor(defaultColor);
+        if (UseWeightOutlineColors && playerMetal)
+        {
+            color = Mathf.Approximately(weight, playerMetal.Weight)
+                ? EqualOutlineColor
+                : weight < playerMetal.Weight
+                ? LighterOutlineColor
+                : HeavierOutlineColor;
+        }
+
+        if (_isHighlighted)
+        {
+            float brightness = Mathf.Max(1f, SelectedOutlineBrightness);
+            color = new Color(color.r * brightness, color.g * brightness, color.b * brightness, color.a);
+        }
+
+        return color;
+    }
 
     [Header("Detection")]
     [SerializeField]
-    private float registerDistance = 15f;
-
+    private float registerDistance = 30f;
     [SerializeField]
-    private float unregisterDistance = 17f;
+    private float unregisterDistance = 32f;
     [SerializeField]
     private float registrationCheckInterval = 0.1f;
-
     private float _registrationTimer;
-
-
     [Header("Force")]
     [SerializeField]
     private float pushForce = 5f;
-
     [SerializeField]
     private float pullForce = 5f;
-
-
     private void Awake()
     {
-        _renderer = GetComponent<Renderer>();
+        _renderers = GetComponentsInChildren<Renderer>();
+        _properties = new MaterialPropertyBlock();
         _rigidbody = GetComponent<Rigidbody>();
-
-        _propertyBlock = new MaterialPropertyBlock();
-
-        SetupOutlineRadius();
-        SetOutlineEnabled(false);
-        SetOutlineColor(new Color(0f, 2f, 4f, 1f));
-
+        SetupRadius();
         _registrationTimer = Random.Range(0f, registrationCheckInterval);
     }
-
 
     private void Start()
     {
         if (player == null)
         {
             GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
-
-            if (playerObject != null) player = playerObject.transform;
+            if (playerObject != null)
+            {
+                player = playerObject.transform;
+            }
         }
 
-        UpdateRegistration();
-
-    }
-
-
-    private void Update()
-    {
-        if (player == null) return;
-        _registrationTimer -= Time.deltaTime;
-
-        if (_registrationTimer <= 0f)
+        if (player != null)
         {
-            _registrationTimer += registrationCheckInterval;
-
             UpdateRegistration();
         }
     }
 
+    private void Update()
+    {
+        if (player == null)
+        {
+            return;
+        }
+
+        _registrationTimer -= Time.deltaTime;
+        if (_registrationTimer <= 0f)
+        {
+            _registrationTimer = registrationCheckInterval;
+            UpdateRegistration();
+        }
+    }
+
+    private void OnDisable()
+    {
+        Undisplay();
+        ActiveMetals.Remove(this);
+        _isRegistered = false;
+        _isDisplayed = false;
+        _isHighlighted = false;
+    }
 
     // =====================================================
     // Registration
     // =====================================================
-
     private void UpdateRegistration()
     {
-        float sqrDistance = (player.position - transform.position).sqrMagnitude - radius;
-
+        float centerDistance = Vector3.Distance(player.position, transform.position);
+        float maxScale = Mathf.Max(
+            Mathf.Abs(transform.lossyScale.x),
+            Mathf.Abs(transform.lossyScale.y),
+            Mathf.Abs(transform.lossyScale.z));
+        float worldRadius = radius * maxScale;
+        float surfaceDistance = Mathf.Max(0f, centerDistance - worldRadius);
         if (!_isRegistered)
         {
-            float registerSqr = registerDistance * registerDistance;
-
-            if (sqrDistance <= registerSqr) Register();
+            if (surfaceDistance <= registerDistance)
+            {
+                Register();
+            }
         }
         else
         {
-            float unregisterSqr = unregisterDistance * unregisterDistance;
-
-            if (sqrDistance > unregisterSqr) Unregister();
+            if (surfaceDistance > unregisterDistance)
+            {
+                Unregister();
+            }
         }
     }
 
-
     private void Register()
     {
+        if (_isRegistered)
+        {
+            return;
+        }
+
         _isRegistered = true;
-
-        // player.GetComponent<PlayerController>().RegisterMetal(this);
+    // player.GetComponent<PlayerController>()
+    //     .RegisterMetal(this);
     }
-
 
     private void Unregister()
     {
-        _isRegistered = false;
+        if (!_isRegistered)
+        {
+            return;
+        }
 
-        // 離開範圍一定清掉狀態
+        _isRegistered = false;
         Undisplay();
         Unhighlight();
-
-        // player.GetComponent<PlayerController>().UnregisterMetal(this);
+    // player.GetComponent<PlayerController>()
+    //     .UnregisterMetal(this);
     }
-
 
     // =====================================================
     // Outline
     // =====================================================
-
     public void Display()
     {
-        if (_isDisplayed) return;
+        if (!_isRegistered)
+        {
+            return;
+        }
+
+        if (_isDisplayed)
+        {
+            return;
+        }
 
         _isDisplayed = true;
-
-        SetOutlineEnabled(true);
+        SetOutlined(true);
     }
-
 
     public void Undisplay()
     {
-        if (!_isDisplayed) return;
+        if (!_isDisplayed)
+        {
+            return;
+        }
 
         _isDisplayed = false;
         _isHighlighted = false;
-
-        SetOutlineEnabled(false);
-
-        // 順便恢復預設顏色
-        SetOutlineColor(new Color(0f, 2f, 4f, 1f));
+        SetOutlined(false);
     }
-
 
     public bool CanSelect()
     {
         return _isRegistered;
     }
 
-
     public void Highlight()
     {
-        if (!_isRegistered) return;
-
-        if (_isHighlighted) return;
-
-        _isHighlighted = true;
-
-        SetOutlineColor( new Color(2f, 0.5f, 0f, 1f));
-    }
-
-
-    public void Unhighlight()
-    {
-        if (!_isHighlighted) return;
-
-        _isHighlighted = false;
-
-        SetOutlineColor(new Color(0f, 2f, 4f, 1f));
-    }
-
-
-    // =====================================================
-    // Push / Pull
-    // =====================================================
-
-    public void Push()
-    {
-        if (!_isRegistered) return;
-    }
-
-
-    public void Pull()
-    {
-        if (!_isRegistered) return;
-    }
-
-
-    // =====================================================
-    // Material Property
-    // =====================================================
-
-    private void SetupOutlineRadius()
-    {
-        var meshFilter = GetComponent<MeshFilter>();
-
-        if (meshFilter == null ||
-            meshFilter.sharedMesh == null)
+        if (!_isRegistered || !_isDisplayed)
         {
             return;
         }
 
+        _isHighlighted = true;
+    }
+
+    public void Unhighlight()
+    {
+        if (!_isHighlighted)
+        {
+            return;
+        }
+
+        _isHighlighted = false;
+    }
+
+    // =====================================================
+    // Push / Pull
+    // =====================================================
+    public void Push()
+    {
+        if (!_isRegistered)
+        {
+            return;
+        }
+    // TODO: Push
+    }
+
+    public void Pull()
+    {
+        if (!_isRegistered)
+        {
+            return;
+        }
+    // TODO: Pull
+    }
+
+    // =====================================================
+    // Radius
+    // =====================================================
+    private void SetupRadius()
+    {
+        MeshFilter meshFilter = GetComponent<MeshFilter>();
+        if (meshFilter == null || meshFilter.sharedMesh == null)
+        {
+            radius = 0.5f;
+            return;
+        }
+
         radius = meshFilter.sharedMesh.bounds.extents.magnitude;
-
-        _renderer.GetPropertyBlock(_propertyBlock);
-
-        _propertyBlock.SetFloat(
-            OutlineObjectRadiusID,
-            radius
-        );
-
-        _renderer.SetPropertyBlock(_propertyBlock);
     }
-
-
-    private void SetOutlineEnabled(bool enabled)
-    {
-        _renderer.GetPropertyBlock(_propertyBlock);
-
-        _propertyBlock.SetFloat(
-            OutlineEnabledID,
-            enabled ? 1f : 0f
-        );
-
-        _renderer.SetPropertyBlock(_propertyBlock);
-    }
-
-
-    private void SetOutlineColor(Color color)
-    {
-        _renderer.GetPropertyBlock(_propertyBlock);
-
-        _propertyBlock.SetColor(
-            OutlineColorID,
-            color
-        );
-
-        _renderer.SetPropertyBlock(_propertyBlock);
-    }
-
-
 #if UNITY_EDITOR
     private void OnValidate()
     {
-        // 保證取消範圍一定比註冊範圍大
+        registerDistance =
+            Mathf.Max(0f, registerDistance);
+
         unregisterDistance =
-            Mathf.Max(
-                unregisterDistance,
-                registerDistance
-            );
+            Mathf.Max(unregisterDistance, registerDistance);
+
+        registrationCheckInterval =
+            Mathf.Max(0.01f, registrationCheckInterval);
     }
 #endif
 }
