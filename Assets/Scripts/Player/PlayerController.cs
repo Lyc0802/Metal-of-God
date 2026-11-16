@@ -111,6 +111,9 @@ public class PlayerController : MonoBehaviour
     public bool IsSelectingMetal { get; private set; }
     public bool IsSelectingTarget => IsSelectingMetal;
 
+    // Metal selection wheel
+    private MetalBurningWheel metalBurningWheel;
+
     private void Awake()
     {
         cameraBody = GetComponent<Rigidbody>();
@@ -203,6 +206,11 @@ public class PlayerController : MonoBehaviour
     private void Update()
     {
         bool gameplayMouse = UpdateCursorCapture();
+
+        // LMB and RMB don't aim and attack while the selection wheel is open
+        if (metalBurningWheel == null) metalBurningWheel = FindAnyObjectByType<MetalBurningWheel>();
+        if (metalBurningWheel != null && metalBurningWheel.IsOpen) gameplayMouse = false;
+
         if (!ViewCamera || (health && health.IsDead))
         {
             return;
@@ -312,6 +320,9 @@ public class PlayerController : MonoBehaviour
 
     private void UpdateLookInput()
     {
+        // Metal selection wheel check, the camera musn't rotate
+        if (metalBurningWheel != null && metalBurningWheel.IsOpen) return;
+
         if (Cursor.lockState == CursorLockMode.Locked)
         {
             var delta = look.ReadValue<Vector2>();
