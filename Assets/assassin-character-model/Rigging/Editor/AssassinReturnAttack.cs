@@ -85,8 +85,8 @@ public static partial class AssassinMotionAuthoring
                 combat.AlternateAttacks=true;combat.SwingDuration=duration;combat.AttackCooldown=duration;
                 combat.ReturnHitStart=.5f;combat.ReturnHitEnd=.83f;
                 combat.HitStart=.5f;combat.HitEnd=.76f;
-                var motion=bridge.GetComponent<AttackAnimationMotion>();
-                if(!motion)throw new InvalidOperationException("Missing source animation motion component.");
+                var motion=bridge.GetComponent<PlayerMovement>();
+                if(!motion)throw new InvalidOperationException("Missing PlayerMovement component for animation displacement.");
                 motion.ReturnLocalX=x;motion.ReturnLocalZ=z;
                 motion.LocalX=forwardX;motion.LocalZ=forwardZ;
                 EditorUtility.SetDirty(combat);EditorUtility.SetDirty(motion);

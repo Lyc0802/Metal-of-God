@@ -11,12 +11,10 @@ public class PlayerActionEffects : MonoBehaviour
     public ParticleSystem SwordSparks;
     public AudioSource SwordAudio;
     public Transform SwordTip;
-    [Min(.05f)]
-    public float SlashDuration = .28f;
-    [Range(.5f, 2)]
-    public float SwordPitch = 1.25f;
-    [Range(0, .2f)]
-    public float SwordPitchVariation = .06f;
+    private PlayerCombat AttackOwner => combat ? combat : (combat = GetComponent<PlayerCombat>());
+    public float SlashDuration { get => AttackOwner.FirstAttack.SlashDuration; set { AttackOwner.FirstAttack.SlashDuration = value; AttackOwner.ReturnAttack.SlashDuration = value; } }
+    public float SwordPitch { get => AttackOwner.FirstAttack.SwordPitch; set { AttackOwner.FirstAttack.SwordPitch = value; AttackOwner.ReturnAttack.SwordPitch = value; } }
+    public float SwordPitchVariation { get => AttackOwner.FirstAttack.SwordPitchVariation; set { AttackOwner.FirstAttack.SwordPitchVariation = value; AttackOwner.ReturnAttack.SwordPitchVariation = value; } }
     [Header("Successful jump - takeoff burst")]
     public ParticleSystem JumpBurst;
     public AudioSource JumpAudio;
@@ -90,7 +88,7 @@ public class PlayerActionEffects : MonoBehaviour
             SwordAudio.Stop();
         }
 
-        slashRemaining = Mathf.Max(.05f, SlashDuration);
+        slashRemaining = Mathf.Max(.05f, AttackOwner.ActiveAttack.SlashDuration);
         UpdateSwordEmitter();
         if (SwordSparks)
         {
@@ -100,7 +98,7 @@ public class PlayerActionEffects : MonoBehaviour
 
         if (SwordAudio && SwordAudio.clip)
         {
-            SwordAudio.pitch = Random.Range(SwordPitch - SwordPitchVariation, SwordPitch + SwordPitchVariation);
+            SwordAudio.pitch = Random.Range(AttackOwner.ActiveAttack.SwordPitch - AttackOwner.ActiveAttack.SwordPitchVariation, AttackOwner.ActiveAttack.SwordPitch + AttackOwner.ActiveAttack.SwordPitchVariation);
             SwordAudio.Play();
         }
     }

@@ -4,6 +4,7 @@ using UnityEngine;
 /// 在物理更新中處理移動、跳躍、牆面滑動，以及金屬能力留下的慣性。
 /// </summary>
 [RequireComponent(typeof(Rigidbody), typeof(CapsuleCollider))]
+[DefaultExecutionOrder(100)]
 public class PlayerMovement : MonoBehaviour
 {
     public float MovementSpeed = 6, RotationSpeed = 540, JumpForce = 6;
@@ -21,6 +22,26 @@ public class PlayerMovement : MonoBehaviour
         : 1);
     public float CurrentJumpForce => JumpForce * (pewter ? pewter.CurrentJumpMultiplier : 1);
 
+    public enum MotionMode { Locomotion, Attack, MetalAbility }
+    public MotionMode CurrentMotionMode { get; private set; }
+    public bool IsMetalDriven { get; private set; }
+    // Compatibility accessors for animation authoring tools.
+    private PlayerCombat AttackOwner => combat ? combat : (combat = GetComponent<PlayerCombat>());
+    public AnimationCurve LocalX { get => AttackOwner.FirstAttack.LocalX; set => AttackOwner.FirstAttack.LocalX = value; }
+    public AnimationCurve LocalZ { get => AttackOwner.FirstAttack.LocalZ; set => AttackOwner.FirstAttack.LocalZ = value; }
+    public AnimationCurve ReturnLocalX { get => AttackOwner.ReturnAttack.LocalX; set => AttackOwner.ReturnAttack.LocalX = value; }
+    public AnimationCurve ReturnLocalZ { get => AttackOwner.ReturnAttack.LocalZ; set => AttackOwner.ReturnAttack.LocalZ = value; }
+    public Transform Visual;
+    private bool attackMotionActive, originalGravity, releaseBrakePending;
+    private float releaseSpeedMultiplier;
+    private int attackSequence = -1;
+    private Vector3 previousAttackSample;
+    private Quaternion attackFacing;
+    private PlayerCombat combat;
+    private PlayerHealth health;
+    private PlayerMetalManipulator manipulation;
+    private PlayerTargetLockOn enemyLock;
+    private PlayerCharacterAnimation characterAnimation;
     private PlayerPewterAbility pewter;
     [Min(0)]
     public float GroundDeceleration = 45;
@@ -49,6 +70,11 @@ public class PlayerMovement : MonoBehaviour
     private void Awake()
     {
         pewter = GetComponent<PlayerPewterAbility>();
+        combat = GetComponent<PlayerCombat>();
+        health = GetComponent<PlayerHealth>();
+        manipulation = GetComponent<PlayerMetalManipulator>();
+        enemyLock = GetComponent<PlayerTargetLockOn>();
+        characterAnimation = GetComponent<PlayerCharacterAnimation>();
         body = GetComponent<Rigidbody>();
         capsule = GetComponent<CapsuleCollider>();
         body.constraints |= RigidbodyConstraints.FreezeRotation;
@@ -93,7 +119,6 @@ public class PlayerMovement : MonoBehaviour
 
     public void ReadInput(Vector2 move, bool jumpPressed, Camera view)
     {
-        var enemyLock = GetComponent<PlayerTargetLockOn>();
         Vector3 forward = enemyLock && enemyLock.IsLocked
             ? Vector3.ProjectOnPlane(
             enemyLock.Target.TargetPoint - body.worldCenterOfMass,
@@ -189,37 +214,57 @@ public class PlayerMovement : MonoBehaviour
     private void FixedUpdate()
     {
         UpdateGroundedState();
-        var manipulation = GetComponent<PlayerMetalManipulator>();
-        if (manipulation && manipulation.IsLocked && manipulation.Target.Valid
-            && manipulation.Weight < manipulation.Target.Metal.weight)
+        if (health && health.IsDead)
         {
-            wallNormals.Clear();
-            jump = false;
+            if (manipulation) manipulation.Release();
+            ClearPendingMotion();
             return;
         }
 
-        var combat = GetComponent<PlayerCombat>();
-        bool attacking = combat && combat.IsAttacking;
-        if(attacking && IsGrounded)
+        if (releaseBrakePending)
         {
-            body.linearVelocity=new Vector3(0,body.linearVelocity.y,0);
-            jump=false; jumpPreparing=false; wallNormals.Clear();
+            releaseBrakePending = false;
+            body.linearVelocity *= releaseSpeedMultiplier;
+        }
+
+        // Exactly one owner chooses player motion during this physics step.
+        if (manipulation && manipulation.isActiveAndEnabled && manipulation.TickPhysics(this))
+        {
+            CurrentMotionMode = MotionMode.MetalAbility;
+            ClearPendingMotion();
             return;
         }
-        var moveDirection = attacking ? desired * AttackMovementMultiplier : desired;
+        ReleaseMetalMotion();
+        bool attacking = combat && combat.IsAttacking;
+        CurrentMotionMode = attacking ? MotionMode.Attack : MotionMode.Locomotion;
+        if (!attacking) attackMotionActive = false;
+        if (enemyLock && enemyLock.isActiveAndEnabled && enemyLock.TryGetFacingRotation(out var facing))
+            body.MoveRotation(facing);
+        if (attacking && IsGrounded)
+        {
+            body.linearVelocity = new Vector3(0, body.linearVelocity.y, 0);
+            jump = jumpPreparing = false;
+            wallNormals.Clear();
+            ApplyAttackMotion();
+            Debug.Log("attack");
+            return;
+        }
+        float abilityMovement = characterAnimation ? characterAnimation.MetalAbilityMovementMultiplier : 1;
+        bool abilityAnimating = characterAnimation && characterAnimation.IsPlayingMetalAbility;
+        if (!attacking && abilityAnimating) CurrentMotionMode = MotionMode.MetalAbility;
+        var moveDirection = desired * (attacking ? AttackMovementMultiplier : abilityMovement);
+        if (abilityAnimating) jump = jumpPreparing = false;
 
         if (attacking)
         {
             jump = false;
         }
 
-        var directionLock = GetComponent<PlayerTargetLockOn>();
         var localDirection = transform.InverseTransformDirection(moveDirection.normalized);
-        float directionSpeed = directionLock && directionLock.IsLocked
+        float directionSpeed = enemyLock && enemyLock.IsLocked
             ? Mathf.Lerp(1,.65f,Mathf.Abs(localDirection.x)) * (localDirection.z<0 ? .85f : 1) : 1;
         UpdateHorizontalVelocity(moveDirection, CurrentMovementSpeed * directionSpeed);
         wallNormals.Clear();
-        var enemyLock = GetComponent<PlayerTargetLockOn>();
         if (moveDirection.sqrMagnitude > .001f && !(enemyLock && enemyLock.IsLocked))
         {
             body.MoveRotation(Quaternion.RotateTowards(body.rotation, Quaternion.LookRotation(moveDirection), RotationSpeed * Time.fixedDeltaTime));
@@ -239,6 +284,82 @@ public class PlayerMovement : MonoBehaviour
         }
 
         jump = false;
+        if (attacking) ApplyAttackMotion();
+    }
+
+    // Called only by the metal solver inside this component's FixedUpdate.
+    public void ApplyMetalMotion(Vector3 velocity, Quaternion? rotation)
+    {
+        if (!IsMetalDriven)
+        {
+            originalGravity = body.useGravity;
+            body.angularVelocity = Vector3.zero;
+            IsMetalDriven = true;
+        }
+        body.useGravity = false;
+        body.linearVelocity = velocity;
+        if (rotation.HasValue) body.MoveRotation(rotation.Value);
+    }
+
+    public void ReleaseMetalMotion()
+    {
+        if (!IsMetalDriven) return;
+        if (body) body.useGravity = originalGravity;
+        IsMetalDriven = false;
+        PreserveExternalMomentum();
+    }
+
+    public void QueueMetalReleaseBrake(float multiplier)
+    {
+        releaseSpeedMultiplier = Mathf.Clamp01(multiplier);
+        releaseBrakePending = true;
+    }
+
+    private void ClearPendingMotion()
+    {
+        wallNormals.Clear();
+        jump = jumpPreparing = false;
+        attackMotionActive = false;
+    }
+
+    private void OnDisable()
+    {
+        ReleaseMetalMotion();
+        ClearPendingMotion();
+        releaseBrakePending = false;
+        desired = Vector3.zero;
+    }
+
+    private void ApplyAttackMotion()
+    {
+        var x = combat.ActiveAttack.LocalX;
+        var z = combat.ActiveAttack.LocalZ;
+        if (x == null || z == null) return;
+        if (!attackMotionActive || attackSequence != combat.SwingSequence)
+        {
+            attackMotionActive = true;
+            attackSequence = combat.SwingSequence;
+            previousAttackSample = new Vector3(x.Evaluate(0), 0, z.Evaluate(0));
+            attackFacing = body.rotation;
+        }
+        var sample = new Vector3(x.Evaluate(combat.SwingProgress), 0, z.Evaluate(combat.SwingProgress));
+        var delta = attackFacing * ((sample - previousAttackSample) * (Visual ? Visual.lossyScale.y : 1));
+        previousAttackSample = sample;
+        ApplyAnimationDisplacement(delta);
+    }
+
+    // Shared collision-limited displacement entry point for future ability motion.
+    // Invoke from the physics step; visual animation must not move the Rigidbody directly.
+    private void ApplyAnimationDisplacement(Vector3 delta)
+    {
+        float distance = delta.magnitude;
+        if (distance < .00001f) return;
+        foreach (var hit in body.SweepTestAll(delta.normalized, distance + .015f, QueryTriggerInteraction.Ignore))
+        {
+            if (!hit.collider.transform.IsChildOf(transform) && Mathf.Abs(hit.normal.y) < .8f)
+                distance = Mathf.Min(distance, Mathf.Max(0, hit.distance - .015f));
+        }
+        body.MovePosition(body.position + delta.normalized * distance);
     }
 
     private void UpdateGroundedState()

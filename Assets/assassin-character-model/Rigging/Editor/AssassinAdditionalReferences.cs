@@ -89,9 +89,8 @@ public static partial class AssassinMotionAuthoring
                 var combat=bridge.GetComponent<PlayerCombat>();
                 combat.SwingDuration=duration;combat.AttackCooldown=duration;combat.HitStart=.54f;combat.HitEnd=.82f;combat.StrikeEnd=.84f;
                 var movement=bridge.GetComponent<PlayerMovement>();movement.AttackMovementMultiplier=0;movement.JumpAnticipation=.18f;
-                var motion=bridge.GetComponent<AttackAnimationMotion>();if(!motion)motion=bridge.gameObject.AddComponent<AttackAnimationMotion>();
-                motion.LocalX=x;motion.LocalZ=z;motion.Visual=bridge.CharacterAnimator.transform;
-                EditorUtility.SetDirty(combat);EditorUtility.SetDirty(movement);EditorUtility.SetDirty(motion);
+                movement.LocalX=x;movement.LocalZ=z;movement.Visual=bridge.CharacterAnimator.transform;
+                EditorUtility.SetDirty(combat);EditorUtility.SetDirty(movement);
                 EditorSceneManager.MarkSceneDirty(bridge.gameObject.scene);
             }
         }

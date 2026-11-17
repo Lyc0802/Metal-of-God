@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// 管理敵人鎖定、目標切換及面向；鏡頭跟隨由 PlayerController 處理。
+/// Selects targets and supplies facing to PlayerMovement; CameraController handles the view.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerTargetLockOn : MonoBehaviour
@@ -121,7 +121,6 @@ public class PlayerTargetLockOn : MonoBehaviour
 
     private Rigidbody body;
     private PlayerHealth health;
-    private PlayerMetalManipulator metal;
     private GameObject marker;
     private LineRenderer ring;
     private Material material;
@@ -129,7 +128,6 @@ public class PlayerTargetLockOn : MonoBehaviour
     {
         body = GetComponent<Rigidbody>();
         health = GetComponent<PlayerHealth>();
-        metal = GetComponent<PlayerMetalManipulator>();
         if (!ViewCamera)
         {
             ViewCamera = Camera.main;
@@ -224,26 +222,17 @@ public class PlayerTargetLockOn : MonoBehaviour
         ValidateTarget();
     }
 
-    public void FaceTarget()
+    // Movement owns the physics update and applies this requested facing.
+    public bool TryGetFacingRotation(out Quaternion rotation)
     {
-        if (!IsLocked
-            || (metal && metal.IsLocked && metal.Target.Valid
-            && metal.Weight < metal.Target.Metal.weight))
-        {
-            return;
-        }
-
+        rotation = body.rotation;
+        if (!IsLocked) return false;
         var direction = Target.TargetPoint - body.worldCenterOfMass;
         direction.y = 0;
-        if (direction.sqrMagnitude > .001f)
-        {
-            body.MoveRotation(Quaternion.RotateTowards(body.rotation, Quaternion.LookRotation(direction), RotationSpeed * Time.fixedDeltaTime));
-        }
-    }
-
-    private void FixedUpdate()
-    {
-        FaceTarget();
+        if (direction.sqrMagnitude <= .001f) return false;
+        rotation = Quaternion.RotateTowards(body.rotation, Quaternion.LookRotation(direction),
+            RotationSpeed * Time.fixedDeltaTime);
+        return true;
     }
 
     private void LateUpdate()

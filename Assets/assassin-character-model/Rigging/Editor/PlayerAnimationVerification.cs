@@ -859,6 +859,7 @@ public static class PlayerAnimationVerification
         }
 
         // Test the real camera update with genuine movement and deceleration.
+        var cameraController = player.GetComponent<CameraController>();
         controller.enabled = false;
         body.position = new Vector3(30, 1.05f, 15);
         body.linearVelocity = Vector3.zero;
@@ -867,7 +868,7 @@ public static class PlayerAnimationVerification
         var previousVelocity = body.linearVelocity;
         body.linearVelocity = Vector3.up * 20;
         Check(
-            Mathf.Abs(controller.TargetFieldOfView - (baseFov + controller.MaximumSpeedFovBoost)) < .1f,
+            Mathf.Abs(cameraController.TargetFieldOfView - (baseFov + cameraController.MaximumSpeedFovBoost)) < .1f,
             "Speed FOV also responds to external/airborne momentum");
         body.linearVelocity = previousVelocity;
         bool sprintBefore = movement.IsSprinting;
@@ -883,7 +884,7 @@ public static class PlayerAnimationVerification
         {
             controller.SendMessage("UpdateCamera");
             float fov = controller.ViewCamera.fieldOfView;
-            if (fov > baseFov + .1f && fov < baseFov + controller.MaximumSpeedFovBoost - 1)
+            if (fov > baseFov + .1f && fov < baseFov + cameraController.MaximumSpeedFovBoost - 1)
             {
                 intermediate = true;
             }
@@ -893,7 +894,7 @@ public static class PlayerAnimationVerification
 
         float fastFov = controller.ViewCamera.fieldOfView;
         Check(
-            intermediate && fastFov > baseFov + 5 && fastFov <= baseFov + controller.MaximumSpeedFovBoost + .1f,
+            intermediate && fastFov > baseFov + 5 && fastFov <= baseFov + cameraController.MaximumSpeedFovBoost + .1f,
             "High-speed movement widens FOV smoothly within its cap");
         controller.SendMessage("UpdateCamera");
         float once = controller.ViewCamera.fieldOfView;

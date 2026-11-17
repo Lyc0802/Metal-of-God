@@ -712,6 +712,7 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
+  - component: {fileID: 2002001100}
   - component: {fileID: 1541927837}
   - component: {fileID: 1541927836}
   - component: {fileID: 1541927835}
@@ -865,9 +866,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3b94e624dcca33f48a106235566ad6c2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
-  ViewCamera: {fileID: 330585545}
   InputActions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
-  LookSensitivity: 0.12
+
 --- !u!114 &1541927839
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -994,3 +994,17 @@ SceneRoots:
   - {fileID: 1541927837}
   - {fileID: 308875895}
   - {fileID: 1485966159}
+--- !u!114 &2002001100
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1541927832}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 79dcd746d8764ed5961e20688054bd04, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CameraController
+  ViewCamera: {fileID: 330585545}
+  LookSensitivity: 0.12

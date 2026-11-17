@@ -10,6 +10,7 @@ public class PlayerHealth : MonoBehaviour
     [Min(0)]
     public float CurrentHealth = 100;
     public bool IsDead { get; private set; }
+    public event System.Action Died;
 
     private void Awake()
     {
@@ -62,34 +63,6 @@ public class PlayerHealth : MonoBehaviour
 
         IsDead = true;
         CurrentHealth = 0;
-        var controller = GetComponent<PlayerController>();
-        if (controller)
-        {
-            controller.enabled = false;
-        }
-
-        var movement = GetComponent<PlayerMovement>();
-        if (movement)
-        {
-            movement.enabled = false;
-        }
-
-        var combat = GetComponent<PlayerCombat>();
-        if (combat)
-        {
-            combat.enabled = false;
-        }
-
-        var target = GetComponent<PlayerTargetLockOn>();
-        if (target)
-        {
-            target.enabled = false;
-        }
-
-        var metal = GetComponent<PlayerMetalManipulator>();
-        if (metal)
-        {
-            metal.Release();
-        }
+        Died?.Invoke();
     }
 }

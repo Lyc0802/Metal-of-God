@@ -10,34 +10,39 @@ public class PlayerCombat : MonoBehaviour
     public Transform SwordPivot;
     [Tooltip("Disable when a skinned character animation drives the hand-held sword.")]
     public bool AnimateSwordPivot = true;
-    public float AttackDamage = 25, AttackRange = 2.5f;
-    [Range(1, 180)]
-    public float AttackAngle = 65;
-    public float AttackCooldown = .4f, SwingDuration = .64f;
-    [Range(20, 160)]
-    public float LeftSwingAngle = 105;
-    [Range(.3f, .85f)]
-    public float StrikeEnd = .60f;
-    [Range(0, 1)]
-    public float HitStart = .34f, HitEnd = .58f;
-    [Min(0)]
-    public float KnockbackSpeed = 8, KnockbackDuration = .3f;
+    public PlayerAttackSettings FirstAttack = new PlayerAttackSettings();
+    public PlayerAttackSettings ReturnAttack = PlayerAttackSettings.CreateReturnAttack();
+    public PlayerAttackSettings ActiveAttack => AttackIndex == 1 ? ReturnAttack : FirstAttack;
+
+    // Compatibility for authoring tools; these properties do not store separate data.
+    public float AttackDamage { get => FirstAttack.AttackDamage; set { FirstAttack.AttackDamage = value; ReturnAttack.AttackDamage = value; } }
+    public float AttackRange { get => FirstAttack.AttackRange; set { FirstAttack.AttackRange = value; ReturnAttack.AttackRange = value; } }
+    public float AttackAngle { get => FirstAttack.AttackAngle; set { FirstAttack.AttackAngle = value; ReturnAttack.AttackAngle = value; } }
+    public float AttackCooldown { get => FirstAttack.AttackCooldown; set { FirstAttack.AttackCooldown = value; ReturnAttack.AttackCooldown = value; } }
+    public float SwingDuration { get => FirstAttack.SwingDuration; set { FirstAttack.SwingDuration = value; ReturnAttack.SwingDuration = value; } }
+    public float LeftSwingAngle { get => FirstAttack.LeftSwingAngle; set { FirstAttack.LeftSwingAngle = value; ReturnAttack.LeftSwingAngle = value; } }
+    public float StrikeEnd { get => FirstAttack.StrikeEnd; set { FirstAttack.StrikeEnd = value; ReturnAttack.StrikeEnd = value; } }
+    public float HitStart { get => FirstAttack.HitStart; set { FirstAttack.HitStart = value; } }
+    public float HitEnd { get => FirstAttack.HitEnd; set { FirstAttack.HitEnd = value; } }
+    public float KnockbackSpeed { get => FirstAttack.KnockbackSpeed; set { FirstAttack.KnockbackSpeed = value; ReturnAttack.KnockbackSpeed = value; } }
+    public float KnockbackDuration { get => FirstAttack.KnockbackDuration; set { FirstAttack.KnockbackDuration = value; ReturnAttack.KnockbackDuration = value; } }
     public LayerMask EnemyMask = ~0;
     public bool IsAttacking { get; private set; }
     public float SwingProgress { get; private set; }
     public bool AlternateAttacks;
     [Min(0)] public float ComboResetDelay = .65f;
-    [Range(0,1)] public float ReturnHitStart = .5f, ReturnHitEnd = .83f;
+    public float ReturnHitStart { get => ReturnAttack.HitStart; set => ReturnAttack.HitStart = value; }
+    public float ReturnHitEnd { get => ReturnAttack.HitEnd; set => ReturnAttack.HitEnd = value; }
     public int AttackIndex { get; private set; }
     public int SwingSequence { get; private set; }
     private bool queuedAttack;
     private int nextAttackIndex;
     private float lastAttackEnd = float.NegativeInfinity;
-    private float ActiveHitStart => AttackIndex == 1 ? ReturnHitStart : HitStart;
-    private float ActiveHitEnd => AttackIndex == 1 ? ReturnHitEnd : HitEnd;
+    private float ActiveHitStart => ActiveAttack.HitStart;
+    private float ActiveHitEnd => ActiveAttack.HitEnd;
     public bool IsBladeSwinging => IsAttacking && SwingProgress >= ActiveHitStart
         && SwingProgress < Mathf.Clamp(
-        StrikeEnd,
+        ActiveAttack.StrikeEnd,
         .3f,
         .85f);
 
@@ -46,6 +51,7 @@ public class PlayerCombat : MonoBehaviour
     private PlayerHealth health;
     private PlayerMetalManipulator metal;
     private PlayerController controller;
+    private PlayerCharacterAnimation characterAnimation;
     private PlayerPewterAbility pewter;
     private readonly HashSet<BreakableObstacle> hitObstacles = new HashSet<BreakableObstacle>();
     private Quaternion rest;
@@ -57,6 +63,7 @@ public class PlayerCombat : MonoBehaviour
         health = GetComponent<PlayerHealth>();
         metal = GetComponent<PlayerMetalManipulator>();
         controller = GetComponent<PlayerController>();
+        characterAnimation = GetComponent<PlayerCharacterAnimation>();
         if (SwordPivot)
         {
             rest = SwordPivot.localRotation;
@@ -80,11 +87,13 @@ public class PlayerCombat : MonoBehaviour
 
     private bool CanAttack()
     {
-        if (!SwordPivot || (health && health.IsDead)
+        // Shared by direct requests, combo buffering and queued follow-up attacks.
+        if (!isActiveAndEnabled || !SwordPivot || (health && health.IsDead)
             || (metal
             && metal.IsLocked)
             || (controller
-            && controller.IsSelectingMetal))
+            && (controller.IsSelectingMetal || controller.IsUsingAbility))
+            || (characterAnimation && characterAnimation.IsPlayingMetalAbility))
         {
             return false;
         }
@@ -100,20 +109,20 @@ public class PlayerCombat : MonoBehaviour
         AttackIndex = AlternateAttacks ? nextAttackIndex : 0;
         nextAttackIndex = 1-AttackIndex;
         SwingSequence++;
-        nextAttack = Time.time + Mathf.Max(AttackCooldown, SwingDuration);
+        nextAttack = Time.time + Mathf.Max(ActiveAttack.AttackCooldown, ActiveAttack.SwingDuration);
         IsAttacking = true;
         SwingProgress = 0;
         hitEnemies.Clear();
         hitObstacles.Clear();
         bool effectPlayed = false;
-        float duration = Mathf.Max(.1f, SwingDuration);
+        float duration = Mathf.Max(.1f, ActiveAttack.SwingDuration);
         float previous = 0;
         for (float elapsed = 0; elapsed < duration; elapsed += Time.deltaTime)
         {
             float t = elapsed / duration;
             SwingProgress = t;
             // One right-to-left cut, then a non-attacking return to the resting pose.
-            float cutEnd = Mathf.Clamp(StrikeEnd, .3f, .85f), left = -Mathf.Abs(LeftSwingAngle);
+            float cutEnd = Mathf.Clamp(ActiveAttack.StrikeEnd, .3f, .85f), left = -Mathf.Abs(ActiveAttack.LeftSwingAngle);
             float angle = t < cutEnd
                 ? Mathf.Lerp(0, left, Mathf.SmoothStep(0, 1, t / cutEnd))
                 : Mathf.Lerp(
@@ -171,7 +180,7 @@ public class PlayerCombat : MonoBehaviour
     {
         var own = GetComponent<Collider>();
         var origin = own ? own.bounds.center : transform.position;
-        foreach (var collider in Physics.OverlapSphere(origin, AttackRange, EnemyMask, QueryTriggerInteraction.Ignore))
+        foreach (var collider in Physics.OverlapSphere(origin, ActiveAttack.AttackRange, EnemyMask, QueryTriggerInteraction.Ignore))
         {
             var obstacle = collider.GetComponentInParent<BreakableObstacle>();
             if (obstacle)
@@ -180,7 +189,7 @@ public class PlayerCombat : MonoBehaviour
                 {
                     var point = obstacle.TargetPoint;
                     var offset = point - origin;
-                    if (offset.magnitude <= AttackRange && Vector3.Angle(transform.forward, offset) <= AttackAngle
+                    if (offset.magnitude <= ActiveAttack.AttackRange && Vector3.Angle(transform.forward, offset) <= ActiveAttack.AttackAngle
                         && CombatSight.Clear(
                         origin,
                         point,
@@ -188,7 +197,7 @@ public class PlayerCombat : MonoBehaviour
                         obstacle.transform))
                     {
                         hitObstacles.Add(obstacle);
-                        obstacle.TakeSwordDamage(AttackDamage * pewter.CurrentStrengthMultiplier, pewter);
+                        obstacle.TakeSwordDamage(ActiveAttack.AttackDamage * pewter.CurrentStrengthMultiplier, pewter);
                     }
                 }
 
@@ -202,7 +211,7 @@ public class PlayerCombat : MonoBehaviour
             }
 
             var delta = enemy.TargetPoint - origin;
-            if (delta.magnitude > AttackRange || Vector3.Angle(transform.forward, delta) > AttackAngle
+            if (delta.magnitude > ActiveAttack.AttackRange || Vector3.Angle(transform.forward, delta) > ActiveAttack.AttackAngle
                 || !CombatSight.Clear(
                 origin,
                 enemy.TargetPoint,
@@ -215,7 +224,7 @@ public class PlayerCombat : MonoBehaviour
             hitEnemies.Add(enemy);
             float previousHealth = enemy.CurrentHealth;
             var hitPosition = collider.ClosestPoint(SwordPivot ? SwordPivot.position : origin);
-            enemy.TakeDamage(AttackDamage);
+            enemy.TakeDamage(ActiveAttack.AttackDamage);
             if (enemy.CurrentHealth < previousHealth)
             {
                 CombatFeedbackEvents.PublishSwordHit(hitPosition, -delta.normalized);
@@ -231,14 +240,14 @@ public class PlayerCombat : MonoBehaviour
                 var ai = enemy.GetComponent<TestEnemy>();
                 if (ai)
                 {
-                    ai.ApplyKnockback(direction, KnockbackSpeed, KnockbackDuration);
+                    ai.ApplyKnockback(direction, ActiveAttack.KnockbackSpeed, ActiveAttack.KnockbackDuration);
                 }
                 else
                 {
                     var rb = enemy.GetComponent<Rigidbody>();
                     if (rb && !rb.isKinematic)
                     {
-                        rb.AddForce(direction * KnockbackSpeed, ForceMode.VelocityChange);
+                        rb.AddForce(direction * ActiveAttack.KnockbackSpeed, ForceMode.VelocityChange);
                     }
                 }
             }

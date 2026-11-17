@@ -3,7 +3,7 @@ using UnityEngine;
 /// <summary>
 /// 處理 Iron 拉與 Steel 推的物理作用、重量差異及釋放後的慣性。
 /// </summary>
-[RequireComponent(typeof(Rigidbody), typeof(PlayerMetalInventory))]
+[RequireComponent(typeof(Rigidbody), typeof(PlayerMetalInventory), typeof(PlayerMovement))]
 public class PlayerMetalManipulator : MonoBehaviour
 {
     [Min(.01f)]
@@ -13,7 +13,6 @@ public class PlayerMetalManipulator : MonoBehaviour
     public float PushSpeed = 20, PullSpeed = 20;
     [Range(0, 1)]
     public float ReleaseSpeedMultiplier = .5f;
-    private bool releaseBrakePending;
     [Min(.01f)]
     public float ArrivalDistance = .12f;
     [Min(.01f)]
@@ -32,10 +31,11 @@ public class PlayerMetalManipulator : MonoBehaviour
     private Rigidbody body;
     private PlayerMetalInventory inventory;
     private PlayerMetalSelector selector;
-    private bool controllingPlayer, originalGravity;
+    private PlayerMovement movement;
     private void Awake()
     {
         body = GetComponent<Rigidbody>();
+        movement = GetComponent<PlayerMovement>();
         inventory = GetComponent<PlayerMetalInventory>();
         selector = GetComponent<PlayerMetalSelector>();
     }
@@ -44,9 +44,9 @@ public class PlayerMetalManipulator : MonoBehaviour
     {
         if (!held)
         {
-            if (controllingPlayer)
+            if (movement && movement.IsMetalDriven)
             {
-                releaseBrakePending = true;
+                movement.QueueMetalReleaseBrake(ReleaseSpeedMultiplier);
             }
 
             Release();
@@ -76,24 +76,9 @@ public class PlayerMetalManipulator : MonoBehaviour
             : (surface.Point - body.worldCenterOfMass).sqrMagnitude <= 30f * 30f;
     }
 
-    private void RestoreGravity()
-    {
-        if (controllingPlayer && body)
-        {
-            body.useGravity = originalGravity;
-            var movement = GetComponent<PlayerMovement>();
-            if (movement)
-            {
-                movement.PreserveExternalMomentum();
-            }
-        }
-
-        controllingPlayer = false;
-    }
-
     public void Release()
     {
-        RestoreGravity();
+        if (movement) movement.ReleaseMetalMotion();
         wallTurnVelocity = 0;
         IsLocked = false;
         Target = default;
@@ -102,11 +87,10 @@ public class PlayerMetalManipulator : MonoBehaviour
     private void OnDisable()
     {
         Release();
-        releaseBrakePending = false;
     }
 
-    private // Account for the player volume: its center cannot reach a solid wall's surface.
- float PlayerExtent(Vector3 direction)
+    // Account for the player volume: its center cannot reach a solid wall's surface.
+    private float PlayerExtent(Vector3 direction)
     {
         var collider = GetComponent<Collider>();
         if (!collider)
@@ -131,31 +115,25 @@ public class PlayerMetalManipulator : MonoBehaviour
         return direction * speed;
     }
 
-    private void FixedUpdate()
+    public bool TickPhysics(PlayerMovement motor)
     {
-        if (releaseBrakePending)
-        {
-            releaseBrakePending = false;
-            body.linearVelocity *= Mathf.Clamp01(ReleaseSpeedMultiplier);
-        }
-
         if (!IsLocked)
         {
-            return;
+            return false;
         }
 
         if (!Target.Valid || !InRange(Target) || !inventory.CanUse(IsPull ? MetalType.Iron : MetalType.Steel))
         {
             Release();
-            return;
+            return false;
         }
 
         float metalWeight = Target.Metal.weight;
         float playerWeight = Weight;
         if (Mathf.Approximately(playerWeight, metalWeight))
         {
-            RestoreGravity();
-            return;
+            motor.ReleaseMetalMotion();
+            return false;
         }
 
         Vector3 delta = Target.Point - body.worldCenterOfMass;
@@ -163,7 +141,7 @@ public class PlayerMetalManipulator : MonoBehaviour
         float remaining = delta.magnitude - PlayerExtent(toward) - ArrivalDistance;
         if (playerWeight > metalWeight)
         {
-            RestoreGravity();
+            motor.ReleaseMetalMotion();
             var metalBody = Target.Collider.attachedRigidbody;
             if (!metalBody)
             {
@@ -181,17 +159,10 @@ public class PlayerMetalManipulator : MonoBehaviour
         }
         else
         {
-            if (!controllingPlayer)
-            {
-                originalGravity = body.useGravity;
-                body.angularVelocity = Vector3.zero;
-                controllingPlayer = true;
-            }
-
-            body.useGravity = false;
+            Quaternion? rotation = null;
             // While locked, hold the arrival position through zero velocity and natural collision.
             bool arrived = IsPull && remaining <= ArrivalDistance;
-            body.linearVelocity = arrived ? Vector3.zero : Velocity(IsPull ? toward : -toward, remaining);
+            var velocity = arrived ? Vector3.zero : Velocity(IsPull ? toward : -toward, remaining);
             if (IsPull && remaining <= WallTurnDistance)
             {
                 // Face outward along the selected surface normal.
@@ -207,12 +178,15 @@ public class PlayerMetalManipulator : MonoBehaviour
                     WallTurnSmoothTime,
                     WallFacingSpeed,
                     Time.fixedDeltaTime);
-                body.MoveRotation(Quaternion.RotateTowards(body.rotation, targetRotation, Mathf.Max(0, angle - nextAngle)));
+                rotation = Quaternion.RotateTowards(body.rotation, targetRotation, Mathf.Max(0, angle - nextAngle));
             }
             else
             {
                 wallTurnVelocity = 0;
             }
+            motor.ApplyMetalMotion(velocity, rotation);
+            return true;
         }
+        return false;
     }
 }

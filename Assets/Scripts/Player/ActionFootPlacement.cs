@@ -10,6 +10,7 @@ public sealed class ActionFootPlacement : MonoBehaviour
     [Min(0)] public float MaximumCorrection=.16f;
     private PlayerMovement movement;
     private PlayerCombat combat;
+    private PlayerCharacterAnimation characterAnimation;
     private Transform[,] bones=new Transform[2,3];
     private Vector3[] planted=new Vector3[2];
     private bool[] holding=new bool[2];
@@ -17,6 +18,7 @@ public sealed class ActionFootPlacement : MonoBehaviour
     {
         holding[0]=holding[1]=false;
         movement=GetComponent<PlayerMovement>(); combat=GetComponent<PlayerCombat>();
+        characterAnimation = GetComponent<PlayerCharacterAnimation>();
         if(!Animator) Animator=GetComponentInChildren<Animator>();
         if(!Animator) {enabled=false;return;}
         var all=Animator.GetComponentsInChildren<Transform>();
@@ -25,7 +27,8 @@ public sealed class ActionFootPlacement : MonoBehaviour
     }
     private void LateUpdate()
     {
-        if(!Animator || !movement.IsGrounded || combat.IsAttacking || movement.IsPreparingJump)
+        if(!Animator || !movement.IsGrounded || combat.IsAttacking || movement.IsPreparingJump
+            || (characterAnimation && characterAnimation.IsPlayingMetalAbility))
         {holding[0]=holding[1]=false;return;}
         float phase=Mathf.Repeat(Animator.GetCurrentAnimatorStateInfo(0).normalizedTime,1);
         float stance=Mathf.Lerp(.62f,.36f,Animator.GetFloat("RunBlend"));
