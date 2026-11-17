@@ -19,6 +19,8 @@ public class PlayerController : MonoBehaviour
     [Min(1)]
     public float CameraDistance = 8;
     public float CameraPivotHeight = 1;
+    [Tooltip("Free camera offset relative to the view: left/right, height, forward/back.")]
+    public Vector3 ShoulderCameraOffset = new Vector3(-.65f, 1.5f, -5f);
     [Header("Speed Field of View")]
     public bool EnableSpeedFov = true;
     [Min(0)]
@@ -399,6 +401,8 @@ public class PlayerController : MonoBehaviour
 
     private void UpdateCamera()
     {
+        bool tracking = enemyLock && enemyLock.IsLocked && !lockCameraSuppressed && !abilityHeld
+            && !manipulator.IsLocked;
         // Called before selection and again after physics to follow the player.
         // Advance smoothing only once per frame, not once per call.
         bool advanceCamera = cameraUpdateFrame != Time.frameCount;
@@ -407,10 +411,11 @@ public class PlayerController : MonoBehaviour
             cameraUpdateFrame = Time.frameCount;
             UpdateSpeedFov();
             AdvanceCameraFollow();
-            var focus = Vector3.up * CameraPivotHeight;
-            float requestedDistance = CameraDistance;
-            bool tracking = enemyLock && enemyLock.IsLocked && !lockCameraSuppressed && !abilityHeld
-                && !manipulator.IsLocked;
+            var focus = tracking
+                ? Vector3.up * CameraPivotHeight
+                : Vector3.up * ShoulderCameraOffset.y
+                    + Quaternion.Euler(0, yaw, 0) * Vector3.right * ShoulderCameraOffset.x;
+            float requestedDistance = tracking ? CameraDistance : Mathf.Max(0, -ShoulderCameraOffset.z);
             if (tracking)
             {
                 var delta = enemyLock.Target.TargetPoint - (transform.position + focus);
@@ -446,7 +451,8 @@ public class PlayerController : MonoBehaviour
         }
 
         var rotation = Quaternion.Euler(pitch, yaw, 0);
-        var desiredPosition = cameraFollowPosition + cameraFocusOffset + rotation * Vector3.back * cameraOrbitDistance;
+        var followPosition = tracking ? cameraFollowPosition : transform.position;
+        var desiredPosition = followPosition + cameraFocusOffset + rotation * Vector3.back * cameraOrbitDistance;
         // Framing may look between the two characters, but collision must start at the player.
         // A focus point inside a pillar must never become a physical camera origin.
         var anchor = transform.position + Vector3.up * CameraPivotHeight;
