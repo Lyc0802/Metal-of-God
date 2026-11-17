@@ -148,6 +148,8 @@ public class PlayerMovement : MonoBehaviour
 
     private void RecordWalls(Collision collision)
     {
+        // Dynamic bodies must receive the player's contact impulse from the solver.
+        if (collision.rigidbody && !collision.rigidbody.isKinematic) return;
         for (int i = 0; i < collision.contactCount; i++)
         {
             var normal = collision.GetContact(i).normal;
@@ -194,6 +196,7 @@ public class PlayerMovement : MonoBehaviour
                 QueryTriggerInteraction.Ignore))
             {
                 if (hit.collider.transform.IsChildOf(transform) || hit.distance <= .0001f
+                    || (hit.rigidbody && !hit.rigidbody.isKinematic)
                     || Mathf.Abs(hit.normal.y) >= .55f)
                 {
                     continue;
@@ -246,7 +249,6 @@ public class PlayerMovement : MonoBehaviour
             jump = jumpPreparing = false;
             wallNormals.Clear();
             ApplyAttackMotion();
-            Debug.Log("attack");
             return;
         }
         float abilityMovement = characterAnimation ? characterAnimation.MetalAbilityMovementMultiplier : 1;
