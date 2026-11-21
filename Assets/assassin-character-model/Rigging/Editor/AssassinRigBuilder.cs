@@ -753,6 +753,7 @@ public static class AssassinRigBuilder
             var controller = Controller(idle, walk, attack);
             // Rebuilding the mesh must also preserve the improved motion authoring.
             AssassinMotionAuthoring.Rebuild(Root);
+            AssassinFingerRig.Configure(model);
             var avatar = AvatarBuilder.BuildGenericAvatar(model, "Hips");
             avatar.name = "Assassin Generic Avatar";
             SaveAsset(avatar, Folder + "/AssassinAvatar.asset");
@@ -764,7 +765,7 @@ public static class AssassinRigBuilder
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             PrefabUtility.SaveAsPrefabAsset(model, Source);
             AssetDatabase.SaveAssets();
-            return "Rigged " + mesh.vertexCount + " vertices, " + Bones.Count + " bones, " + materials.Length + " materials; Idle/Walk/Attack generated.";
+            return "Rigged " + mesh.vertexCount + " vertices, " + skinned.bones.Length + " bones, " + materials.Length + " materials; Idle/Walk/Attack generated.";
         }
         finally
         {

@@ -118,6 +118,14 @@ BlendTree:
   m_Name: Walk 8 Directions
   m_Childs:
   - serializedVersion: 2
+    m_Motion: {fileID: 7400000, guid: b562baaa01be4cd4c8fcb9feeb6b2ea5, type: 2}
+    m_Threshold: 0
+    m_Position: {x: 0, y: 0}
+    m_TimeScale: 1
+    m_CycleOffset: 0
+    m_DirectBlendParameter: Blend
+    m_Mirror: 0
+  - serializedVersion: 2
     m_Motion: {fileID: 7400000, guid: 36bb8a3749b984844b8123d531743dd8, type: 2}
     m_Threshold: 0
     m_Position: {x: 0, y: 1}
@@ -254,7 +262,7 @@ AnimatorStateMachine:
     m_Position: {x: 200, y: 0, z: 0}
   - serializedVersion: 1
     m_State: {fileID: -8800162016757729526}
-    m_Position: {x: 235, y: 65, z: 0}
+    m_Position: {x: 240, y: 70, z: 0}
   - serializedVersion: 1
     m_State: {fileID: -1716437264424186947}
     m_Position: {x: 270, y: 130, z: 0}
@@ -459,6 +467,14 @@ BlendTree:
   m_PrefabAsset: {fileID: 0}
   m_Name: Run 8 Directions
   m_Childs:
+  - serializedVersion: 2
+    m_Motion: {fileID: 7400000, guid: b562baaa01be4cd4c8fcb9feeb6b2ea5, type: 2}
+    m_Threshold: 0
+    m_Position: {x: 0, y: 0}
+    m_TimeScale: 1
+    m_CycleOffset: 0
+    m_DirectBlendParameter: Blend
+    m_Mirror: 0
   - serializedVersion: 2
     m_Motion: {fileID: 7400000, guid: be50487becc296347b0876c280f23b6d, type: 2}
     m_Threshold: 0

@@ -131,7 +131,9 @@ public static partial class AssassinMotionAuthoring
         }
     }
 
-    private static void ReferenceLimb(Rig r, ReferenceMotion source, string side, bool arm)
+    // extraFlex adds bend on the anatomical hinge (elbow/knee). For legs half of it is
+    // returned at the hip, so the foot stays under the body and the hips sink instead.
+    private static void ReferenceLimb(Rig r, ReferenceMotion source, string side, bool arm, float extraFlex = 0)
     {
         string upperName = side + (arm ? "UpperArm" : "UpperLeg"), lowerName = side + (arm ? "LowerArm" : "LowerLeg"), endName = side + (arm
             ? "Hand"
@@ -153,7 +155,13 @@ public static partial class AssassinMotionAuthoring
         var normal = -Mirror(source.Bones[a].TransformDirection(source.HingeAxes[a]));
         normal = Vector3.ProjectOnPlane(normal, u).normalized;
         upper.rotation = Quaternion.LookRotation(u, normal) * Quaternion.Inverse(Quaternion.LookRotation(bindUpper, bindNormal));
-        float flex = Mathf.Clamp(Vector3.Angle(u, l), arm ? 5 : .5f, arm ? 130 : 155);
+        float sourceFlex = Vector3.Angle(u, l);
+        float flex = Mathf.Clamp(sourceFlex + extraFlex, arm ? 5 : .5f, arm ? 130 : 155);
+        if (!arm && flex != sourceFlex)
+        {
+            upper.rotation = Quaternion.AngleAxis(-(flex - sourceFlex) * .5f, upper.rotation * bindNormal) * upper.rotation;
+        }
+
         lower.localRotation = Quaternion.AngleAxis(flex - Vector3.Angle(bindUpper, bindLower), bindNormal);
         if (arm)
         {
@@ -183,7 +191,7 @@ public static partial class AssassinMotionAuthoring
             (toes.position + toes.rotation * V(0, -.025f, 0)).y);
     }
 
-    private static void ReferencePose(Rig r, ReferenceMotion source, bool running, float time)
+    private static void ReferencePose(Rig r, ReferenceMotion source, bool running, float time, float kneeExtra = 0, float elbowExtra = 0)
     {
         float phase = time / source.Clip.length;
         source.Sample(phase);
@@ -243,9 +251,12 @@ public static partial class AssassinMotionAuthoring
             var shoulder = r.B(side + "Shoulder");
             var clavicle = Mirror(source.Bones[side + "Arm"].position - source.Bones[side + "Shoulder"].position);
             shoulder.rotation = Quaternion.LookRotation(clavicle, Mirror(source.Bones["Spine2"].up)) * Quaternion.Inverse(Quaternion.LookRotation(r.B(side + "UpperArm").localPosition, Vector3.up));
-            ReferenceLimb(r, source, side, true);
-            ReferenceLimb(r, source, side, false);
+            ReferenceLimb(r, source, side, true, elbowExtra);
+            ReferenceLimb(r, source, side, false, kneeExtra);
         }
+
+        // Every retargeted clip (locomotion, jump, sword) carries the capture's finger motion.
+        MatchFingers(r, source);
 
         // Strip all source horizontal travel. Match sole contact on this model's
         // proportions, retaining the reference's airborne phase in Run.

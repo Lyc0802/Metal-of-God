@@ -4,9 +4,13 @@ using UnityEngine;
 public sealed class PlayerCharacterAnimation : MonoBehaviour
 {
     public const float AuthoredAttackDuration = .64f, AuthoredWalkStride = .60f;
+    // Side-step stride length relative to forward; baked into the 8-way clips and compensated by WalkRate.
+    public const float LateralStrideScale = .75f;
     public Animator CharacterAnimator;
     public float MovementBlendTime = .12f, WalkReferenceSpeed = 1.9f, RunReferenceSpeed = 5.1f;
     public float MaximumWalkRate = 2.5f, MaximumRunRate = 2.5f;
+    [Tooltip("Planar speed (m/s) above which locomotion switches from the walk clips to the run clips.")]
+    public float RunSpeedThreshold = 4.5f;
     public float ReturnBlendTime = .15f;
     private PlayerCombat AttackOwner => combat ? combat : (combat = GetComponent<PlayerCombat>());
     public float AttackBlendTime { get => AttackOwner.FirstAttack.AttackBlendTime; set { AttackOwner.FirstAttack.AttackBlendTime = value; AttackOwner.ReturnAttack.AttackBlendTime = value; } }
@@ -66,9 +70,10 @@ public sealed class PlayerCharacterAnimation : MonoBehaviour
     private Rigidbody body;
     private bool wasGrounded;
     private string state;
-    private float landingUntil, previousVertical;
+    private float landingUntil, previousVertical, locomotionPhase;
     public float PlanarSpeed => body ? Vector3.ProjectOnPlane(body.linearVelocity, Vector3.up).magnitude : 0;
-    public float TargetRunBlend => movement && movement.IsSprinting ? 1 : Mathf.InverseLerp(WalkReferenceSpeed * 1.6f, RunReferenceSpeed, PlanarSpeed);
+    // Walk below the threshold, run above it (RunBlend damping smooths the switch).
+    public float TargetRunBlend => (movement && movement.IsSprinting) || PlanarSpeed > RunSpeedThreshold ? 1 : 0;
     public float TargetWalkRate => Mathf.Clamp(PlanarSpeed / Mathf.Lerp(WalkReferenceSpeed, RunReferenceSpeed, TargetRunBlend), .35f, Mathf.Lerp(MaximumWalkRate, MaximumRunRate, TargetRunBlend));
     public Vector2 LocalMotion { get; private set; }
     public string VisualState => state;
@@ -93,19 +98,30 @@ public sealed class PlayerCharacterAnimation : MonoBehaviour
         a.SetFloat("Speed",Mathf.Clamp01(PlanarSpeed / Mathf.Max(.1f,RunReferenceSpeed)),MovementBlendTime,Time.deltaTime);
         a.SetFloat("Moving",Mathf.InverseLerp(.03f,.35f,PlanarSpeed),MovementBlendTime,Time.deltaTime);
         a.SetFloat("RunBlend",TargetRunBlend,.18f,Time.deltaTime);
-        float directionalStride=Mathf.Lerp(1,.58f,Mathf.Abs(LocalMotion.x));
-        a.SetFloat("WalkRate",Mathf.Clamp(TargetWalkRate/directionalStride,.35f,2.5f),.12f,Time.deltaTime);
+        float directionalStride=Mathf.Lerp(1,LateralStrideScale,Mathf.Abs(LocalMotion.x));
+        // Walk playback follows ground speed (no foot sliding); run always plays at its authored rate.
+        float walkRate=Mathf.Clamp(TargetWalkRate/directionalStride,.35f,2.5f);
+        a.SetFloat("WalkRate",TargetRunBlend>.5f ? 1 : walkRate,.12f,Time.deltaTime);
         bool grounded=movement.IsGrounded && body.linearVelocity.y<.8f;
         a.SetBool("IsGrounded",grounded); a.SetFloat("VerticalVelocity",body.linearVelocity.y,.06f,Time.deltaTime);
         a.SetBool("IsAttacking",combat.IsAttacking);
         if (grounded && !wasGrounded && previousVertical < -1.5f) landingUntil=Time.time+.26f;
         string next=combat.IsAttacking ? combat.ActiveAttack.StateName : IsPlayingMetalAbility ? activeMetalAnimation.StateName : movement.IsPreparingJump ? "Jump Anticipation"
-            : !grounded ? (body.linearVelocity.y > .15f ? "Jump Ascending" : "Fall Descending")
+            // Pushed/pulled through the air: tucked jump-ascending pose regardless of direction.
+            : !grounded ? (movement.IsMetalDriven || body.linearVelocity.y > .15f ? "Jump Ascending" : "Fall Descending")
             : Time.time<landingUntil ? "Landing" : "Locomotion";
+        var current=a.GetCurrentAnimatorStateInfo(0);
+        if (state=="Locomotion" && current.IsName("Locomotion")) locomotionPhase=Mathf.Repeat(current.normalizedTime,1);
         if (combat.IsAttacking) ApplyAttackPose();
         else if (next!=state)
         {
-            a.CrossFadeInFixedTime(next,next=="Landing" ? .055f : ReturnBlendTime,0,0);
+            if (next=="Locomotion")
+            {
+                // Resume the gait where it left off. Restarting at time 0 snapped the legs to
+                // the first frame whenever grounding flickered or a short action ended.
+                a.CrossFade(next,ReturnBlendTime/Mathf.Max(.05f,current.length),0,locomotionPhase);
+            }
+            else a.CrossFadeInFixedTime(next,next=="Landing" ? .055f : ReturnBlendTime,0,0);
             state=next;
         }
         wasGrounded=grounded; previousVertical=body.linearVelocity.y;

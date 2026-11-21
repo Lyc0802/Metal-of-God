@@ -506,6 +506,12 @@ public static partial class AssassinMotionAuthoring
         settings.loopBlend = loop;
         settings.keepOriginalPositionXZ = true;
         settings.keepOriginalPositionY = true;
+        // The Generic avatar's root-motion node is Hips and the player never applies root
+        // motion. Without Bake Into Pose the Animator strips Hips twist/sway/bob in game
+        // (preview still shows it), freezing the torso/shoulder motion.
+        settings.loopBlendOrientation = true;
+        settings.loopBlendPositionY = true;
+        settings.loopBlendPositionXZ = true;
         AnimationUtility.SetAnimationClipSettings(clip, settings);
         var existing = AssetDatabase.LoadAssetAtPath<AnimationClip>(Folder + "/Animations/" + name + ".anim");
         if (existing)

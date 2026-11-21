@@ -58,6 +58,11 @@ public static partial class AssassinMotionAuthoring
                  foreach(var b in rig.Bones.Where(b=>b.name.Contains("Cloth")))b.localRotation=Quaternion.identity;});
             }
         }
+        RetargetJumpAndAttack(r);
+    }
+    private static void RetargetJumpAndAttack(Rig r)
+    {
+        const string dir="Assets/assassin-character-model/";
         using(var jump=new ReferenceMotion(dir+"Jumping.fbx"))
         {
             Bake(r,"JumpAnticipation",.18f,false,(rig,t)=>RawReference(rig,jump,Mathf.Lerp(.12f,.48f,t/.18f)));
