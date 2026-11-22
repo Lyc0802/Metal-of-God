@@ -342,8 +342,9 @@ public class PlayerController : MonoBehaviour
 
     private void LateUpdate()
     {
+        // Slow motion only while choosing a target; it ends once an ability is activated this hold.
         // Apply after input updates so closing the wheel cannot overwrite ability slow motion.
-        SetAbilitySlowMotion(abilityHeld && ViewCamera && !(health && health.IsDead)
+        SetAbilitySlowMotion(IsSelectingMetal && ViewCamera && !(health && health.IsDead)
             && !(metalBurningWheel && metalBurningWheel.IsOpen));
         if (ViewCamera)
         {

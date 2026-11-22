@@ -61,7 +61,8 @@ public class TargetingBridge : MonoBehaviour
 
         bool locked = manipulator.IsLocked;
         bool activated = enemyManipulator && enemyManipulator.HasActivatedThisHold;
-        Aiming = controller.IsSelectingMetal || locked || activated;
+        // Aiming = controller.IsSelectingMetal || locked || activated;
+        Aiming = controller.IsSelectingMetal;
 
         // ---- 目前的目標 ----
         // 推拉鎖定後，組員會清掉選取，所以改從 manipulator 拿正在推拉的目標

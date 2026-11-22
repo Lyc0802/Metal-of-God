@@ -16148,7 +16148,7 @@ MonoBehaviour:
   MaxTorsoPitch: 20
   MaxHeadYaw: 35
   MaxHeadPitch: 30
-  ReachExtension: 0.92
+  ReachExtension: 0.99
   MaxReachAngle: 115
   MaxReachElevation: 70
   CrossBodyReach: 45
