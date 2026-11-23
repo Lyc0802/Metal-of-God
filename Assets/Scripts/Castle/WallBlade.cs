@@ -23,10 +23,45 @@ public class WallBlade : MonoBehaviour
     private PlayerMetalManipulator manipulator;
     private float freedAt;
 
+    private static readonly System.Collections.Generic.List<WallBlade> all = new System.Collections.Generic.List<WallBlade>();
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStatics()
+    {
+        all.Clear();
+    }
+
     private void Awake()
     {
         metal = GetComponent<MetalDisplayer>();
         body = GetComponent<Rigidbody>();
+        // 飾刀之間互不碰撞：成對交叉掛在牆上的兩把刀會重疊，從刀架拔出時才不會互相卡住 / 擠開。
+        var mine = GetComponentsInChildren<Collider>();
+        foreach (var other in all)
+        {
+            if (!other)
+            {
+                continue;
+            }
+
+            foreach (var a in mine)
+            {
+                foreach (var b in other.GetComponentsInChildren<Collider>())
+                {
+                    if (a && b)
+                    {
+                        Physics.IgnoreCollision(a, b, true);
+                    }
+                }
+            }
+        }
+
+        all.Add(this);
+    }
+
+    private void OnDestroy()
+    {
+        all.Remove(this);
     }
 
     private bool carried;
