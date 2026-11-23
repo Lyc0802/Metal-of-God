@@ -18,6 +18,8 @@ public class TestEnemy : MonoBehaviour
 {
     public PlayerHealth Player;
     [Header("AudioSource Sounds")]
+    [Tooltip("關閉後敵人走路不再發出腳步聲（Tin 的聲音提示也不會有腳步）。")]
+    public bool PlayFootsteps = true;
     public AudioClip FootstepClip, AttackClip;
     [Range(0, 1)]
     public float FootstepVolume = .7f, AttackVolume = 1;
@@ -371,7 +373,7 @@ public class TestEnemy : MonoBehaviour
     {
         var movement = Vector3.ProjectOnPlane(transform.position - lastFootPosition, Vector3.up);
         lastFootPosition = transform.position;
-        if (enemy.IsDead || !agent.enabled || !agent.isOnNavMesh || IsAttacking || IsKnockedBack)
+        if (!PlayFootsteps || enemy.IsDead || !agent.enabled || !agent.isOnNavMesh || IsAttacking || IsKnockedBack)
         {
             return;
         }

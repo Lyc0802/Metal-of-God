@@ -252,6 +252,8 @@ public static partial class CastleEntranceBuilder
         }
 
         go.GetComponent<TestEnemy>().AttackPivot = null;
+        // 城堡裡的敵人不發出腳步聲。
+        go.GetComponent<TestEnemy>().PlayFootsteps = false;
         // 聽覺 / 警報 / 光線感知（所有敵人共用）。
         var senses = go.AddComponent<EnemySenses>();
         // 對金屬撞擊聲等的警覺性高：聽覺範圍大、更遠的埋伏者也會被吵醒、到了聲源會多留一會兒。
