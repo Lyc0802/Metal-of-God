@@ -119,6 +119,13 @@ public class Enemy : MonoBehaviour, IMetalAbilityStatus
     public float CurrentHealth = 100;
     [Min(0)]
     public float DestroyDelay = 2;
+    [Tooltip("大於等於 0 時，TargetPoint 的高度固定為「腳底 + 此值」（大型敵人的碰撞箱中心太高，玩家普攻會打不到）。")]
+    public float TargetHeight = -1;
+    [Tooltip("玩家近戰判定的距離補償：判定距離會先減去此值（大型敵人以碰撞箱表面而非中心軸計算）。")]
+    [Min(0)]
+    public float MeleeReachBonus = 0;
+    [Tooltip("為 true 時不會受到任何傷害（例如 Boss 戰吼演出期間）。")]
+    public bool Invulnerable;
     public bool IsDead { get; private set; }
 
     public event Action<Enemy> Died;
@@ -246,7 +253,13 @@ public class Enemy : MonoBehaviour, IMetalAbilityStatus
         get
         {
             var c = GetComponent<Collider>();
-            return c ? c.bounds.center : transform.position + Vector3.up;
+            Vector3 point = c ? c.bounds.center : transform.position + Vector3.up;
+            if (TargetHeight >= 0)
+            {
+                point.y = transform.position.y + TargetHeight;
+            }
+
+            return point;
         }
     }
 
@@ -292,7 +305,7 @@ public class Enemy : MonoBehaviour, IMetalAbilityStatus
 
     public void TakeDamage(float damage)
     {
-        if (IsDead || damage <= 0)
+        if (IsDead || damage <= 0 || Invulnerable)
         {
             return;
         }

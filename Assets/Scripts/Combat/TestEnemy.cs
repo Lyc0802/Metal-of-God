@@ -247,13 +247,25 @@ public class TestEnemy : MonoBehaviour
         bool detectedByVision = Player && !Player.IsDead && distance <= DetectionRange && hasSight;
         if (IsAttacking)
         {
+            if (AttackWhileMoving && Player && !Player.IsDead && !IsBrassActive)
+            {
+                // 快速移動的近戰敵人：揮擊的同時不停下來，繼續追著玩家跑（玩家衝刺也甩不掉）。
+                TickChase();
+                Face(targetPoint - transform.position);
+                return;
+            }
+
             Stop();
             Face(targetPoint - transform.position);
             return;
         }
 
         UpdatePerceptionState(distance, hasSight, detectedByAbility, detectedByVision);
-        if (State == EnemyState.Attack)
+        if (AttackWhileMoving && (State == EnemyState.Attack || State == EnemyState.Chase))
+        {
+            TickMovingAttack(distance, hasSight);
+        }
+        else if (State == EnemyState.Attack)
         {
             TickAttack(targetPoint, distance, hasSight);
         }
@@ -327,7 +339,8 @@ public class TestEnemy : MonoBehaviour
 
         var collider = Player.GetComponent<Collider>();
         var point = collider ? collider.bounds.center : Player.transform.position;
-        if (Vector3.Distance(enemy.TargetPoint, point) <= AttackRange
+        float reach = AttackWhileMoving ? AttackRange * MovingReachScale : AttackRange;
+        if (Vector3.Distance(enemy.TargetPoint, point) <= reach
             && CombatSight.Clear(
             enemy.TargetPoint,
             point,
@@ -434,6 +447,27 @@ public class TestEnemy : MonoBehaviour
         }
     }
 
+    [Header("Attack while moving (fast melee enemies)")]
+    [Tooltip("開啟後：邊追邊揮擊（不停下來），攻擊判定距離放大，玩家一路衝刺也甩不掉。")]
+    public bool AttackWhileMoving;
+    [Tooltip("邊移動邊攻擊時，開始揮擊與命中判定的距離 = AttackRange × 這個倍數（跑動中的揮擊要有更寬的判定）。")]
+    [Min(1)] public float MovingReachScale = 1.8f;
+
+    private void TickMovingAttack(float distance, bool hasSight)
+    {
+        TickChase();
+        if (Player && distance <= AttackRange * MovingReachScale)
+        {
+            Face(Player.transform.position - transform.position);
+        }
+
+        if (Time.time >= nextAttack && Player && !Player.IsDead && distance <= AttackRange * MovingReachScale && hasSight)
+        {
+            nextAttack = Time.time + Mathf.Max(AttackDuration, AttackCooldown);
+            StartCoroutine(AttackRoutine());
+        }
+    }
+
     private void TickAttack(Vector3 targetPoint, float distance, bool hasSight)
     {
         Stop();
@@ -459,8 +493,79 @@ public class TestEnemy : MonoBehaviour
         Face(agent.desiredVelocity);
     }
 
+    [Header("Patrol (optional)")]
+    [Tooltip("設定兩個以上的路徑點時，閒晃狀態改成依序巡邏這些點（循環），而不是在出生點附近隨機亂走。")]
+    public Transform[] PatrolPoints;
+    private int patrolIndex = -1;
+
+    private void TickPatrol()
+    {
+        agent.speed = WanderSpeed;
+        agent.stoppingDistance = .3f;
+        if (!agent.pathPending && (!agent.hasPath || agent.remainingDistance <= .6f))
+        {
+            if (agent.hasPath)
+            {
+                Stop();
+                nextWander = Time.time + WanderWait;
+            }
+
+            if (Time.time >= nextWander)
+            {
+                // 回到巡邏時，從離自己最近的點開始接著走（被引開 / 追擊結束後不會跑回很遠的點）。
+                if (patrolIndex < 0)
+                {
+                    patrolIndex = NearestPatrolIndex();
+                }
+                else
+                {
+                    patrolIndex = (patrolIndex + 1) % PatrolPoints.Length;
+                }
+
+                var target = PatrolPoints[patrolIndex];
+                if (target && NavMesh.SamplePosition(target.position, out var hit, 3f, agent.areaMask))
+                {
+                    agent.isStopped = false;
+                    agent.SetDestination(hit.position);
+                }
+
+                nextWander = Time.time + .2f;
+            }
+        }
+
+        Face(agent.desiredVelocity);
+    }
+
+    private int NearestPatrolIndex()
+    {
+        int best = 0;
+        float bestDistance = float.PositiveInfinity;
+        for (int i = 0; i < PatrolPoints.Length; i++)
+        {
+            if (!PatrolPoints[i])
+            {
+                continue;
+            }
+
+            float d = (PatrolPoints[i].position - transform.position).sqrMagnitude;
+            if (d < bestDistance)
+            {
+                bestDistance = d;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
     private void TickWander()
     {
+        if (PatrolPoints != null && PatrolPoints.Length > 1)
+        {
+            TickPatrol();
+            return;
+        }
+
         agent.speed = WanderSpeed;
         agent.stoppingDistance = .15f;
         if (!agent.pathPending && (!agent.hasPath || agent.remainingDistance <= .3f))

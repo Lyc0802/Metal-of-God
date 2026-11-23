@@ -11,6 +11,8 @@ public class PlayerHealth : MonoBehaviour
     public float CurrentHealth = 100;
     public bool IsDead { get; private set; }
     public event System.Action Died;
+    /// <summary>玩家實際受到傷害時觸發，參數為本次傷害量。</summary>
+    public event System.Action<float> Damaged;
 
     private void Awake()
     {
@@ -40,6 +42,7 @@ public class PlayerHealth : MonoBehaviour
         }
 
         CurrentHealth = Mathf.Clamp(CurrentHealth - damage, 0, MaxHealth);
+        Damaged?.Invoke(damage);
         if (CurrentHealth <= 0)
         {
             Die();

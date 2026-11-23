@@ -95,11 +95,37 @@ public class PlayerMetalSelector : MonoBehaviour
         float rayDistance = Mathf.Max(0, SelectionDistance) + Vector3.Distance(ray.origin, RangeOrigin);
         var hits = Physics.RaycastAll(ray, rayDistance, ~0, QueryTriggerInteraction.Ignore);
         Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        bool enemyInFront = false;
         foreach (var hit in hits)
         {
             if (hit.collider.transform.IsChildOf(transform))
             {
                 continue;
+            }
+
+            // 敵人身後牆上的飾刀（WallBlade）可以穿過敵人選取；其他東西仍然會擋住。
+            if (enemyInFront)
+            {
+                var blade = hit.collider.GetComponentInParent<WallBlade>();
+                var bladeMetal = blade ? blade.GetComponent<MetalDisplayer>() : null;
+                if (bladeMetal && bladeMetal.isActiveAndEnabled && IsPointInRange(hit.point))
+                {
+                    Current = MetalSurface.FromHit(hit, bladeMetal);
+                    break;
+                }
+
+                if (blade)
+                {
+                    break;
+                }
+
+                // 同一個敵人的其他碰撞器、或再後面的敵人不算遮擋物。
+                if (hit.collider.GetComponentInParent<Enemy>())
+                {
+                    continue;
+                }
+
+                break;
             }
 
             // The first non-player collider occludes everything behind it, regardless of selection mask.
@@ -112,6 +138,9 @@ public class PlayerMetalSelector : MonoBehaviour
                     {
                         CurrentEnemy = enemy;
                         EnemyHit = hit;
+                        // 繼續往後找：牆上的飾刀可以穿過這個敵人選取。
+                        enemyInFront = true;
+                        continue;
                     }
                 }
                 else

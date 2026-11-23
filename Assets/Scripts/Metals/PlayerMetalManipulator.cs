@@ -35,6 +35,90 @@ public class PlayerMetalManipulator : MonoBehaviour
     public bool IsPull { get; private set; }
     public MetalSurface Target { get; private set; }
 
+    [Header("Fire Pulse (visual only)")]
+    [Tooltip("推 / 拉的線特效播放時間（秒）。只是視覺回饋，施力不會等它。")]
+    [Min(.01f)]
+    public float PulseVisualTime = .08f;
+    /// <summary>發出推 / 拉時觸發：目標、是否為拉、線特效播放時間（秒）。施力與此事件同時開始。</summary>
+    public event System.Action<MetalSurface, bool, float> Fired;
+
+    [Header("Carry & Launch")]
+    [Tooltip("拉過來的輕金屬離玩家表面這麼近，就算「已經接觸」。")]
+    [Min(0)]
+    public float CarryContactDistance = 1.1f;
+    [Tooltip("按住右鍵、物體持續接觸玩家這麼久之後，就進入攜帶狀態；此時往前滾輪（推）會把它沿瞄準方向射出。")]
+    [Min(0)]
+    public float CarryHoldTime = .2f;
+    [Min(0)]
+    public float LaunchSpeed = 38;
+    /// <summary>瞄準用的相機（由 PlayerController 每幀設定）；沒設定就用主相機。</summary>
+    public Camera AimCamera;
+    /// <summary>累計射出次數（給動畫 / 音效判斷是否剛射出）。</summary>
+    public int LaunchCount { get; private set; }
+
+    [Tooltip("攜帶時物體懸浮的位置（相對玩家中心；x = 右、y = 上、z = 前，方向跟著鏡頭的水平朝向）。")]
+    public Vector3 CarryShoulderOffset = new Vector3(.6f, .75f, .1f);
+    private float carryTime;
+    private Rigidbody carriedBody;
+    private bool carryIgnoring;
+
+    /// <summary>攜帶時物體懸浮的世界座標：玩家右肩上方，隨鏡頭水平朝向轉動。</summary>
+    public Vector3 CarryPoint
+    {
+        get
+        {
+            var cam = AimCamera ? AimCamera : Camera.main;
+            Vector3 right = cam ? Vector3.ProjectOnPlane(cam.transform.right, Vector3.up) : transform.right;
+            Vector3 forward = cam ? Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up) : transform.forward;
+            right = right.sqrMagnitude > .0001f ? right.normalized : transform.right;
+            forward = forward.sqrMagnitude > .0001f ? forward.normalized : transform.forward;
+            Vector3 center = body ? body.worldCenterOfMass : transform.position;
+            return center + right * CarryShoulderOffset.x + Vector3.up * CarryShoulderOffset.y + forward * CarryShoulderOffset.z;
+        }
+    }
+
+    /// <summary>攜帶期間忽略物體與玩家自己的碰撞（它懸浮在肩上、射出時也從那裡出發，不該撞到玩家）。</summary>
+    private void SetCarryCollisionIgnored(Rigidbody metalBody, bool ignored)
+    {
+        if (ignored == carryIgnoring && carriedBody == metalBody)
+        {
+            return;
+        }
+
+        if (!ignored && !carriedBody)
+        {
+            carryIgnoring = false;
+            return;
+        }
+
+        var target = ignored ? metalBody : carriedBody;
+        if (target && !ignored && !target.GetComponent<WallBlade>())
+        {
+            // 攜帶時關掉了重力；結束後還給物體（飾刀由 WallBlade 自己管理飛行 / 重力）。
+            target.useGravity = true;
+        }
+
+        if (target)
+        {
+            var mine = GetComponentsInChildren<Collider>();
+            foreach (var a in target.GetComponentsInChildren<Collider>())
+            {
+                foreach (var b in mine)
+                {
+                    if (a && b && a != b)
+                    {
+                        Physics.IgnoreCollision(a, b, ignored);
+                    }
+                }
+            }
+        }
+
+        carryIgnoring = ignored;
+        carriedBody = ignored ? metalBody : null;
+    }
+    /// <summary>按住右鍵拉著輕金屬、並且它已經貼在身上一段時間：可以用推（滾輪向前）把它射出去。</summary>
+    public bool IsCarrying => IsLocked && IsPull && Target.Valid && carryTime >= CarryHoldTime && Target.Metal.weight < Weight;
+
     private Rigidbody body;
     private PlayerMetalInventory inventory;
     private PlayerMetalSelector selector;
@@ -60,7 +144,18 @@ public class PlayerMetalManipulator : MonoBehaviour
             return;
         }
 
-        if (IsLocked || scroll == 0 || !selected.Valid || !InRange(selected))
+        // 攜帶中（按住右鍵、物體貼在身上一段時間）再往前滾輪（推）：把它沿瞄準方向射出去。
+        if (IsLocked)
+        {
+            if (scroll > 0 && IsCarrying && inventory.CanUse(MetalType.Steel))
+            {
+                Launch();
+            }
+
+            return;
+        }
+
+        if (scroll == 0 || !selected.Valid || !InRange(selected))
         {
             return;
         }
@@ -71,11 +166,14 @@ public class PlayerMetalManipulator : MonoBehaviour
             return;
         }
 
+        // 立刻施力，沒有任何延遲；線的特效只是同時播放的視覺回饋。
         Target = selected;
         IsPull = pull;
         IsLocked = true;
+        carryTime = 0;
         float turn = WallTurnYaw;
         PlannedWallTurnSign = Mathf.Abs(turn) > 1 ? Mathf.Sign(turn) : 0;
+        Fired?.Invoke(selected, pull, PulseVisualTime);
     }
 
     private bool InRange(MetalSurface surface)
@@ -85,8 +183,85 @@ public class PlayerMetalManipulator : MonoBehaviour
             : (surface.Point - body.worldCenterOfMass).sqrMagnitude <= 30f * 30f;
     }
 
+    /// <summary>從 from 朝準心瞄準點的方向（準心射線打到的第一個東西；忽略玩家自己與被攜帶的金屬）。</summary>
+    public Vector3 AimDirection(Vector3 from)
+    {
+        var cam = AimCamera ? AimCamera : Camera.main;
+        if (!cam)
+        {
+            return transform.forward;
+        }
+
+        var ray = cam.ViewportPointToRay(new Vector3(.5f, .5f));
+        float skip = Vector3.Distance(ray.origin, body ? body.worldCenterOfMass : transform.position);
+        Vector3 point = ray.GetPoint(80f);
+        var hits = Physics.RaycastAll(ray, 80f, ~0, QueryTriggerInteraction.Ignore);
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        foreach (var hit in hits)
+        {
+            // 相機到玩家之間的東西（背後的牆等）不算；玩家自己與被攜帶的金屬也不算。
+            if (hit.distance < skip || hit.collider.transform.IsChildOf(transform)
+                || (Target.Valid && hit.collider.transform.IsChildOf(Target.Metal.transform)))
+            {
+                continue;
+            }
+
+            point = hit.point;
+            break;
+        }
+
+        Vector3 d = point - from;
+        return d.sqrMagnitude > .01f ? d.normalized : ray.direction;
+    }
+
+    private void Launch()
+    {
+        var metal = Target.Metal;
+        var metalBody = Target.Collider.attachedRigidbody;
+        if (!metalBody)
+        {
+            metalBody = metal.GetComponentInParent<Rigidbody>();
+        }
+
+        if (!metalBody || metalBody.isKinematic)
+        {
+            return;
+        }
+
+        Vector3 velocity = AimDirection(metalBody.worldCenterOfMass) * LaunchSpeed;
+        var blade = metalBody.GetComponent<WallBlade>();
+        if (blade)
+        {
+            blade.Launch(velocity);
+        }
+        else
+        {
+            metalBody.WakeUp();
+            metalBody.linearVelocity = velocity;
+        }
+
+        MetalImpactFeedback.MarkDriven(metalBody, metal);
+        var prop = metalBody.GetComponent<LooseMetalProp>();
+        if (prop)
+        {
+            // 剛射出時還貼在玩家身邊，不算撞到玩家。
+            prop.ResetPlayerGrace();
+            // 攜帶後投擲：傷害加成（飾刀特別高）。
+            prop.MarkThrown();
+        }
+
+        LaunchCount++;
+        Release();
+    }
+
     public void Release()
     {
+        carryTime = 0;
+        if (carryIgnoring)
+        {
+            SetCarryCollisionIgnored(carriedBody, false);
+        }
+
         if (movement) movement.ReleaseMetalMotion();
         wallTurnVelocity = 0;
         IsLocked = false;
@@ -192,12 +367,35 @@ public class PlayerMetalManipulator : MonoBehaviour
                 metalBody = Target.Metal.GetComponentInParent<Rigidbody>();
             }
 
-            if (metalBody && !metalBody.isKinematic)
+            bool dynamicBody = metalBody && !metalBody.isKinematic;
+            if (IsCarrying && dynamicBody)
             {
-                metalBody.linearVelocity = Velocity(IsPull ? -toward : toward, remaining);
-                if (metalBody.linearVelocity.sqrMagnitude > .001f)
+                // 攜帶中：懸浮在玩家的右肩上（跟著鏡頭轉），不再貼在拉過來的方向；與玩家自己的碰撞暫時忽略。
+                SetCarryCollisionIgnored(metalBody, true);
+                Vector3 toShoulder = CarryPoint - metalBody.worldCenterOfMass;
+                if (toShoulder.magnitude > 3f)
                 {
+                    // 離肩膀太遠（被擋住 / 被拉開）：放棄攜帶，重新拉過來。
+                    carryTime = 0;
+                    SetCarryCollisionIgnored(metalBody, false);
+                }
+                else
+                {
+                    metalBody.useGravity = false;
+                    metalBody.linearVelocity = Vector3.ClampMagnitude(toShoulder / Time.fixedDeltaTime, 45f);
                     MetalImpactFeedback.MarkDriven(metalBody, Target.Metal);
+                }
+            }
+            else
+            {
+                carryTime = IsPull && remaining <= CarryContactDistance ? carryTime + Time.fixedDeltaTime : 0;
+                if (dynamicBody)
+                {
+                    metalBody.linearVelocity = Velocity(IsPull ? -toward : toward, remaining);
+                    if (metalBody.linearVelocity.sqrMagnitude > .001f)
+                    {
+                        MetalImpactFeedback.MarkDriven(metalBody, Target.Metal);
+                    }
                 }
             }
         }

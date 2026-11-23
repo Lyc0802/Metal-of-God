@@ -6,6 +6,7 @@ using UnityEngine;
 ///   「視野範圍內」= 距離不超過 range，而且在鏡頭畫面裡
 ///   顏色：比玩家重（或固定不動）→ 深藍；比玩家輕 → 淺藍；正在瞄準或推拉中的那條 → 接近白色、變粗
 ///   粗細：越重越粗、越遠越細，並微微閃爍
+/// 只在瞄準（按住右鍵）或推拉進行中顯示，平常不畫線。
 /// 只負責畫線；金屬清單、重量、瞄準目標都讀組員的程式。由 TargetingSetup 加到 Player 上。
 /// </summary>
 public class IronSteelSight : MonoBehaviour
@@ -48,7 +49,11 @@ public class IronSteelSight : MonoBehaviour
     {
         int used = 0;
         var view = controller && controller.ViewCamera ? controller.ViewCamera : Camera.main;
-        bool active = inventory && view
+        // 只在瞄準（按住右鍵選目標）或推拉進行中才顯示藍線，平常不顯示。
+        // 攜帶物品時不顯示藍線（改成標示出攜帶的物品，見 PlayerController.UpdateMetalOutlines）。
+        bool carrying = manipulator && manipulator.IsCarrying;
+        bool aiming = !carrying && controller && (controller.IsSelectingMetal || (manipulator && manipulator.IsLocked));
+        bool active = aiming && inventory && view
                    && (inventory.CanUse(MetalType.Iron) || inventory.CanUse(MetalType.Steel));
 
         if (active)
