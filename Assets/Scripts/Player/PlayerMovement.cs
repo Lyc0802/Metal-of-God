@@ -8,6 +8,8 @@ using UnityEngine;
 public class PlayerMovement : MonoBehaviour
 {
     public float MovementSpeed = 6, RotationSpeed = 540, JumpForce = 6;
+    [Tooltip("Degrees per second the body turns back upright after a metal pull tilted it.")]
+    [Min(0)] public float UprightRecoverySpeed = 720;
     [Min(0)]
     public float SprintSpeed = 10;
     public bool IsSprinting { get; private set; }
@@ -57,7 +59,24 @@ public class PlayerMovement : MonoBehaviour
     public PhysicsMaterial MovementMaterial;
     [Min(0)]
     public float WallSkin = .03f;
-    private readonly System.Collections.Generic.List<Vector3> wallNormals = new System.Collections.Generic.List<Vector3>();
+    [Header("Step Climbing")]
+    [Tooltip("Maximum obstacle height the player walks onto without jumping (like CharacterController Step Offset).")]
+    [Min(0)] public float StepHeight = .35f;
+    [Tooltip("Distance ahead of the capsule swept for steps.")]
+    [Min(0)] public float StepCheckDistance = .2f;
+    [Tooltip("Maximum upward speed while climbing a step.")]
+    [Min(.01f)] public float StepClimbSpeed = 4;
+    // Sweeps use a capsule shrunk by StepSweepSkin so they do not start overlapping the ground;
+    // steps lower than the skin are left to the rounded capsule bottom.
+    private const float StepMinHeight = .005f, StepContactTolerance = .03f;
+    private const float StepSweepSkin = .01f, StepSweepBackOff = .05f;
+    private readonly RaycastHit[] stepHits = new RaycastHit[16];
+    private bool stepClimbing;
+    private float stepRiseSpeed;
+    // Wall contacts at or below this height belong to the step being climbed and must not block motion.
+    private float stepIgnoreBelowY = float.NegativeInfinity;
+    private readonly System.Collections.Generic.List<(Vector3 normal, float height)> wallNormals =
+        new System.Collections.Generic.List<(Vector3 normal, float height)>();
     public bool IsGrounded { get; private set; }
     public Vector3 DesiredMoveDirection => desired;
 
@@ -152,10 +171,10 @@ public class PlayerMovement : MonoBehaviour
         if (collision.rigidbody && !collision.rigidbody.isKinematic) return;
         for (int i = 0; i < collision.contactCount; i++)
         {
-            var normal = collision.GetContact(i).normal;
-            if (Mathf.Abs(normal.y) < .55f)
+            var contact = collision.GetContact(i);
+            if (Mathf.Abs(contact.normal.y) < .55f)
             {
-                wallNormals.Add(normal);
+                wallNormals.Add((contact.normal, contact.point.y));
             }
         }
     }
@@ -170,9 +189,12 @@ public class PlayerMovement : MonoBehaviour
 
     private Vector3 WallSlide(Vector3 velocity)
     {
-        foreach (var normal in wallNormals)
+        foreach (var wall in wallNormals)
         {
-            velocity = Slide(velocity, normal);
+            if (wall.height > stepIgnoreBelowY)
+            {
+                velocity = Slide(velocity, wall.normal);
+            }
         }
 
         var scale = transform.lossyScale;
@@ -197,7 +219,8 @@ public class PlayerMovement : MonoBehaviour
             {
                 if (hit.collider.transform.IsChildOf(transform) || hit.distance <= .0001f
                     || (hit.rigidbody && !hit.rigidbody.isKinematic)
-                    || Mathf.Abs(hit.normal.y) >= .55f)
+                    || Mathf.Abs(hit.normal.y) >= .55f
+                    || hit.point.y <= stepIgnoreBelowY)
                 {
                     continue;
                 }
@@ -238,6 +261,7 @@ public class PlayerMovement : MonoBehaviour
             return;
         }
         ReleaseMetalMotion();
+        RecoverUpright();
         bool attacking = combat && combat.IsAttacking;
         CurrentMotionMode = attacking ? MotionMode.Attack : MotionMode.Locomotion;
         if (!attacking) attackMotionActive = false;
@@ -248,6 +272,7 @@ public class PlayerMovement : MonoBehaviour
             body.linearVelocity = new Vector3(0, body.linearVelocity.y, 0);
             jump = jumpPreparing = false;
             wallNormals.Clear();
+            EndStepClimb();
             ApplyAttackMotion();
             return;
         }
@@ -265,8 +290,19 @@ public class PlayerMovement : MonoBehaviour
         var localDirection = transform.InverseTransformDirection(moveDirection.normalized);
         float directionSpeed = enemyLock && enemyLock.IsLocked
             ? Mathf.Lerp(1,.65f,Mathf.Abs(localDirection.x)) * (localDirection.z<0 ? .85f : 1) : 1;
-        UpdateHorizontalVelocity(moveDirection, CurrentMovementSpeed * directionSpeed);
+        float moveSpeed = CurrentMovementSpeed * directionSpeed;
+        // Detect before wall sliding so the step face does not cancel forward velocity.
+        bool stepping = TryFindStep(moveDirection, out float stepRemaining, out float stepEdgeDistance);
+        UpdateHorizontalVelocity(moveDirection, moveSpeed);
         wallNormals.Clear();
+        if (stepping)
+        {
+            ApplyStepRise(stepRemaining, stepEdgeDistance, moveSpeed * moveDirection.magnitude);
+        }
+        else
+        {
+            EndStepClimb();
+        }
         if (moveDirection.sqrMagnitude > .001f && !(enemyLock && enemyLock.IsLocked))
         {
             body.MoveRotation(Quaternion.RotateTowards(body.rotation, Quaternion.LookRotation(moveDirection), RotationSpeed * Time.fixedDeltaTime));
@@ -303,6 +339,21 @@ public class PlayerMovement : MonoBehaviour
         if (rotation.HasValue) body.MoveRotation(rotation.Value);
     }
 
+    // Pulling onto a ceiling/wall tilts the body to face the surface normal; once released,
+    // turn back upright (keeping the heading) so the player does not fall face-down.
+    private void RecoverUpright()
+    {
+        var rotation = body.rotation;
+        if (Vector3.Angle(rotation * Vector3.up, Vector3.up) < .1f) return;
+        var heading = Vector3.ProjectOnPlane(rotation * Vector3.forward, Vector3.up);
+        // Facing straight down/up: the head direction gives the horizontal heading instead.
+        if (heading.sqrMagnitude < .01f) heading = Vector3.ProjectOnPlane(rotation * Vector3.up, Vector3.up);
+        if (heading.sqrMagnitude < 1e-6f) heading = Vector3.forward;
+        var upright = Quaternion.LookRotation(heading, Vector3.up);
+        body.angularVelocity = Vector3.zero;
+        body.MoveRotation(Quaternion.RotateTowards(rotation, upright, UprightRecoverySpeed * Time.fixedDeltaTime));
+    }
+
     public void ReleaseMetalMotion()
     {
         if (!IsMetalDriven) return;
@@ -322,6 +373,176 @@ public class PlayerMovement : MonoBehaviour
         wallNormals.Clear();
         jump = jumpPreparing = false;
         attackMotionActive = false;
+        stepClimbing = false;
+        stepRiseSpeed = 0;
+        stepIgnoreBelowY = float.NegativeInfinity;
+    }
+
+    // Capsule-sweep step detection, like CharacterController's Step Offset. Volume sweeps cannot slip
+    // through mesh seams or cracks and do not need the step to have a side face:
+    // 1) forward at the current height finds a low obstacle, 2) up finds headroom,
+    // 3) forward at the raised height checks for a wall, 4) down finds the step top.
+    private bool TryFindStep(Vector3 moveDirection, out float remaining, out float edgeDistance)
+    {
+        remaining = edgeDistance = 0;
+        stepIgnoreBelowY = float.NegativeInfinity;
+        if (StepHeight <= StepMinHeight || moveDirection.sqrMagnitude < .001f
+            || !(IsGrounded || stepClimbing)
+            || body.linearVelocity.y > stepRiseSpeed + .1f)
+        {
+            return false;
+        }
+
+        var direction = Vector3.ProjectOnPlane(moveDirection, Vector3.up).normalized;
+        float foot = capsule.bounds.min.y;
+        GetStepCapsule(out var upper, out var lower, out float radius);
+        float reach = StepCheckDistance + CurrentMovementSpeed * Time.fixedDeltaTime;
+
+        // 1) Only a low obstacle ahead can be a step.
+        if (!SweepStep(upper, lower, radius, direction, reach, true, out var front)
+            || front.point.y > foot + StepHeight + StepContactTolerance)
+        {
+            return false;
+        }
+
+        // 2) Headroom above the player limits how far it may rise.
+        float lift = StepHeight + StepSweepSkin;
+        if (SweepStep(upper, lower, radius, Vector3.up, lift, false, out var ceiling))
+        {
+            lift = ceiling.distance;
+        }
+
+        if (lift <= StepMinHeight)
+        {
+            return false;
+        }
+
+        // 3) Raised, the capsule must move past the edge; hitting something at the edge means a wall.
+        var raise = Vector3.up * lift;
+        float advance = front.distance + radius * .5f;
+        if (SweepStep(upper + raise, lower + raise, radius, direction, advance, true, out var wall))
+        {
+            if (wall.distance <= front.distance + StepMinHeight)
+            {
+                return false;
+            }
+
+            advance = wall.distance;
+        }
+
+        // 4) Drop back down onto the step top.
+        var shift = raise + direction * advance;
+        if (!SweepStep(upper + shift, lower + shift, radius, Vector3.down, lift, false, out var landing)
+            || landing.normal.y < .55f)
+        {
+            return false;
+        }
+
+        float height = landing.point.y - foot;
+        if (height <= StepMinHeight || height > StepHeight + .001f)
+        {
+            return false;
+        }
+
+        // Reject a slope the capsule already stands on: that plane touches its bottom sphere.
+        if (Mathf.Abs(Vector3.Dot(landing.normal, lower - landing.point) - (radius + StepSweepSkin)) < .008f)
+        {
+            return false;
+        }
+
+        float bestTop = landing.point.y;
+        remaining = height;
+        // The sweep already measured how far the capsule can move before touching the edge.
+        edgeDistance = front.distance;
+        stepIgnoreBelowY = bestTop + StepContactTolerance;
+        return true;
+    }
+
+    private void ApplyStepRise(float remaining, float edgeDistance, float horizontalSpeed)
+    {
+        // Rise so the feet reach the top about when the capsule reaches the edge, never overshooting.
+        float dt = Time.fixedDeltaTime;
+        float rise = Mathf.Min(
+            StepClimbSpeed,
+            remaining * Mathf.Max(horizontalSpeed, .5f) / Mathf.Max(edgeDistance, .05f),
+            remaining / dt);
+        // Lift by position, not upward velocity: animation treats vertical velocity as a jump,
+        // while stepping up is still walking. Horizontal velocity is kept as is.
+        var velocity = body.linearVelocity;
+        velocity.y = 0;
+        body.linearVelocity = velocity;
+        // The solver still integrates gravity this step; add back that drop so the net rise is `rise`.
+        float gravityDrop = body.useGravity ? -Physics.gravity.y * dt * dt : 0;
+        body.MovePosition(body.position + Vector3.up * (rise * dt + gravityDrop));
+        stepClimbing = true;
+        stepRiseSpeed = rise;
+    }
+
+    private void EndStepClimb()
+    {
+        if (stepClimbing)
+        {
+            // Remove leftover climb velocity so finishing a step never becomes a small hop.
+            var velocity = body.linearVelocity;
+            if (velocity.y > 0 && velocity.y <= stepRiseSpeed + .1f)
+            {
+                velocity.y = 0;
+                body.linearVelocity = velocity;
+            }
+        }
+
+        stepClimbing = false;
+        stepRiseSpeed = 0;
+        stepIgnoreBelowY = float.NegativeInfinity;
+    }
+
+    // World-space sphere centers of the player capsule, with the radius shrunk by StepSweepSkin.
+    private void GetStepCapsule(out Vector3 upper, out Vector3 lower, out float radius)
+    {
+        var scale = transform.lossyScale;
+        int axis = capsule.direction;
+        radius = capsule.radius * Mathf.Max(Mathf.Abs(scale[(axis + 1) % 3]), Mathf.Abs(scale[(axis + 2) % 3]));
+        float half = Mathf.Max(0, capsule.height * Mathf.Abs(scale[axis]) * .5f - radius);
+        var center = transform.TransformPoint(capsule.center);
+        var up = transform.TransformDirection(axis == 0 ? Vector3.right : axis == 1 ? Vector3.up : Vector3.forward);
+        if (up.y < 0) up = -up;
+        upper = center + up * half;
+        lower = center - up * half;
+        radius = Mathf.Max(.01f, radius - StepSweepSkin);
+    }
+
+    private bool SweepStep(Vector3 upper, Vector3 lower, float radius, Vector3 direction, float distance,
+        bool backOff, out RaycastHit result)
+    {
+        result = default;
+        // Starting slightly behind keeps an edge the player is already pressed against detectable.
+        float offset = backOff ? StepSweepBackOff : 0;
+        var start = -direction * offset;
+        int count = Physics.CapsuleCastNonAlloc(upper + start, lower + start, radius, direction, stepHits,
+            distance + offset, GroundMask, QueryTriggerInteraction.Ignore);
+        float best = float.PositiveInfinity;
+        for (int i = 0; i < count; i++)
+        {
+            var hit = stepHits[i];
+            // Skip initial overlaps; dynamic bodies are pushed by the solver rather than climbed.
+            if (hit.collider.transform.IsChildOf(transform) || hit.distance >= best
+                || (hit.distance <= 0 && hit.point == Vector3.zero)
+                || (hit.rigidbody && !hit.rigidbody.isKinematic))
+            {
+                continue;
+            }
+
+            best = hit.distance;
+            result = hit;
+        }
+
+        if (float.IsPositiveInfinity(best))
+        {
+            return false;
+        }
+
+        result.distance = Mathf.Max(0, best - offset);
+        return true;
     }
 
     private void OnDisable()
@@ -380,6 +601,12 @@ public class PlayerMovement : MonoBehaviour
             {
                 IsGrounded = true;
             }
+        }
+
+        // Climbing a step is walking; keep grounded so animation and foot placement stay on the ground.
+        if (stepClimbing)
+        {
+            IsGrounded = true;
         }
     }
 

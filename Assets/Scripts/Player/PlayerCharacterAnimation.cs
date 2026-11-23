@@ -12,6 +12,8 @@ public sealed class PlayerCharacterAnimation : MonoBehaviour
     [Tooltip("Planar speed (m/s) above which locomotion switches from the walk clips to the run clips.")]
     public float RunSpeedThreshold = 4.5f;
     public float ReturnBlendTime = .15f;
+    [Tooltip("Seconds without ground contact before the air pose plays; hides brief slope/terrain contact loss.")]
+    [Min(0)] public float AirborneDelay = .15f;
     private PlayerCombat AttackOwner => combat ? combat : (combat = GetComponent<PlayerCombat>());
     public float AttackBlendTime { get => AttackOwner.FirstAttack.AttackBlendTime; set { AttackOwner.FirstAttack.AttackBlendTime = value; AttackOwner.ReturnAttack.AttackBlendTime = value; } }
     public float ComboBlendTime { get => AttackOwner.FirstAttack.ComboBlendTime; set { AttackOwner.FirstAttack.ComboBlendTime = value; AttackOwner.ReturnAttack.ComboBlendTime = value; } }
@@ -68,7 +70,8 @@ public sealed class PlayerCharacterAnimation : MonoBehaviour
     private PlayerCombat combat;
     private PlayerHealth health;
     private Rigidbody body;
-    private bool wasGrounded;
+    private bool wasGrounded, jumping;
+    private float jumpTime, ungroundedTime;
     private string state;
     private float landingUntil, previousVertical, locomotionPhase;
     public float PlanarSpeed => body ? Vector3.ProjectOnPlane(body.linearVelocity, Vector3.up).magnitude : 0;
@@ -85,6 +88,8 @@ public sealed class PlayerCharacterAnimation : MonoBehaviour
         if (!CharacterAnimator) CharacterAnimator=GetComponentInChildren<Animator>();
         if (CharacterAnimator) { CharacterAnimator.applyRootMotion=false; CharacterAnimator.cullingMode=AnimatorCullingMode.AlwaysAnimate; }
     }
+    private void OnEnable() { if (movement) movement.Jumped += HandleJumped; }
+    private void HandleJumped() { jumping = true; jumpTime = Time.time; }
     private void Update()
     {
         if (!CharacterAnimator) return;
@@ -100,9 +105,14 @@ public sealed class PlayerCharacterAnimation : MonoBehaviour
         a.SetFloat("RunBlend",TargetRunBlend,.18f,Time.deltaTime);
         float directionalStride=Mathf.Lerp(1,LateralStrideScale,Mathf.Abs(LocalMotion.x));
         // Walk playback follows ground speed (no foot sliding); run always plays at its authored rate.
-        float walkRate=Mathf.Clamp(TargetWalkRate/directionalStride,.35f,2.5f);
+        float walkRate=Mathf.Clamp(TargetWalkRate/directionalStride,.35f,1.25f);
         a.SetFloat("WalkRate",TargetRunBlend>.5f ? 1 : walkRate,.12f,Time.deltaTime);
-        bool grounded=movement.IsGrounded && body.linearVelocity.y<.8f;
+        // Upward velocity alone is not a jump: walking up a slope also moves up. Air poses need a real
+        // jump, or ground lost for AirborneDelay / launched upward / metal-driven while off the ground.
+        ungroundedTime = movement.IsGrounded ? 0 : ungroundedTime + Time.deltaTime;
+        if (jumping && movement.IsGrounded && Time.time > jumpTime + .2f) jumping = false;
+        bool grounded = !(jumping || (!movement.IsGrounded && (ungroundedTime > AirborneDelay
+            || body.linearVelocity.y > .8f || movement.IsMetalDriven)));
         a.SetBool("IsGrounded",grounded); a.SetFloat("VerticalVelocity",body.linearVelocity.y,.06f,Time.deltaTime);
         a.SetBool("IsAttacking",combat.IsAttacking);
         if (grounded && !wasGrounded && previousVertical < -1.5f) landingUntil=Time.time+.26f;
@@ -151,6 +161,11 @@ public sealed class PlayerCharacterAnimation : MonoBehaviour
             state=next;
         }
     }
-    private void OnDisable() { state=null; StopMetalAbility(); }
+    private void OnDisable()
+    {
+        state=null; StopMetalAbility();
+        if (movement) movement.Jumped -= HandleJumped;
+        jumping = false; ungroundedTime = 0;
+    }
 }
 
