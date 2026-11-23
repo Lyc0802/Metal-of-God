@@ -4,10 +4,10 @@ using UnityEngine.UI;
 
 /// 
 /// 金屬選擇輪盤的操作：
-///   1. 按住滑鼠中鍵（滾輪按下去）→ 畫面變暗、時間變慢，大輪盤出現在畫面正中央
+///   1. 按住滑鼠中鍵（滾輪按下去）或鍵盤 Tab → 畫面變暗、時間變慢，大輪盤出現在畫面正中央
 ///   2. 移動滑鼠 → 一個看不見的「指標」從中心往外移動，指到哪個扇形就選哪個
-///   3. 放開中鍵 → 指到的金屬切換燃燒 / 熄滅，輪盤關閉，回到遊戲
-///   按住中鍵時按左鍵：直接切換指到的金屬、輪盤不關，可以一次開關好幾種
+///   3. 放開中鍵 / Tab → 指到的金屬切換燃燒 / 熄滅，輪盤關閉，回到遊戲
+///   按住中鍵 / Tab 時按左鍵：直接切換指到的金屬、輪盤不關，可以一次開關好幾種
 ///   （右鍵留給「瞄準」，見 AllomanticTargeting）
 ///   數字鍵 1–8：不開輪盤，直接切換對應的金屬
 /// 
@@ -24,7 +24,7 @@ public class MetalBurningWheel : MonoBehaviour
     public CanvasGroup group;
     public RectTransform pointerDot;
     public Vector2 pointer;                           // 指標位置（輪盤的區域座標，單位是 UI 像素）
-    bool toggledDuringHold;
+    bool toggledDuringHold, openedByTab;
     float openAmount;                          // 0 = 關閉，1 = 完全打開（做淡入淡出用）
     float defaultFixedDelta;
     public System.Func<bool> canAct;   // 由外部決定能不能開輪盤（例如玩家死亡時不行）
@@ -85,7 +85,14 @@ public class MetalBurningWheel : MonoBehaviour
         var kb = Keyboard.current;
         if (mouse == null) return;
 
-        if (!IsOpen && mouse.middleButton.wasPressedThisFrame) Open();
+        // 滑鼠中鍵或鍵盤 Tab 都可以開輪盤；用哪個開，就由哪個的放開來關閉。
+        bool middlePressed = mouse.middleButton.wasPressedThisFrame;
+        bool tabPressed = kb != null && kb.tabKey.wasPressedThisFrame;
+        if (!IsOpen && (middlePressed || tabPressed))
+        {
+            openedByTab = !middlePressed && tabPressed;
+            Open();
+        }
 
         if (IsOpen)
         {
@@ -106,7 +113,10 @@ public class MetalBurningWheel : MonoBehaviour
                 toggledDuringHold = true;
             }
 
-            if (mouse.middleButton.wasReleasedThisFrame)
+            bool released = openedByTab
+                ? kb != null && kb.tabKey.wasReleasedThisFrame
+                : mouse.middleButton.wasReleasedThisFrame;
+            if (released)
             {
                 // 如果按住期間已經用左鍵切換過，放開時就不再切換（避免切兩次又變回去）
                 if (wheel.hovered >= 0 && !toggledDuringHold) reserves.Toggle((Metal)wheel.hovered);

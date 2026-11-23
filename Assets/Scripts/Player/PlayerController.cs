@@ -62,7 +62,7 @@ public class PlayerController : MonoBehaviour
     private EventSystem pointerEventSystem;
     private PointerEventData pointerEvent;
     private readonly List<RaycastResult> pointerHits = new List<RaycastResult>();
-    private bool lockCameraSuppressed;
+    private bool lockCameraSuppressed, focusInterrupted;
     public bool IsSelectingMetal { get; private set; }
     public bool IsSelectingTarget => IsSelectingMetal;
     public bool IsUsingAbility => isActiveAndEnabled && abilityHeld;
@@ -150,6 +150,30 @@ public class PlayerController : MonoBehaviour
         actions?.Enable();
         scroll?.Enable();
         SetCursorCaptured(true);
+        if (health)
+        {
+            health.Damaged += OnDamaged;
+        }
+    }
+
+    /// <summary>被擊中時中斷專注：結束金屬瞄準 / 推拉，必須放開右鍵再重新按下才能再次瞄準。</summary>
+    private void OnDamaged(float damage)
+    {
+        if (abilityHeld || IsSelectingMetal || (manipulator && manipulator.IsLocked))
+        {
+            focusInterrupted = true;
+        }
+
+        IsSelectingMetal = false;
+        if (selector)
+        {
+            selector.ClearSelection();
+        }
+
+        if (manipulator)
+        {
+            manipulator.Release();
+        }
     }
 
     public bool IsPointerOverUI(Vector2 screenPosition)
@@ -210,6 +234,16 @@ public class PlayerController : MonoBehaviour
         }
 
         bool held = abilityHeld = gameplayMouse && ability.IsPressed();
+        if (focusInterrupted)
+        {
+            // 專注被打斷：在放開右鍵之前，一律視為沒有按住。
+            if (!held)
+            {
+                focusInterrupted = false;
+            }
+
+            held = abilityHeld = false;
+        }
         if (held && !rightHeldLastFrame)
         {
             BeginAbilityAim();
@@ -244,12 +278,17 @@ public class PlayerController : MonoBehaviour
         }
 
         movement.ReadInput(move.ReadValue<Vector2>(), jump.WasPressedThisFrame(), ViewCamera);
-        float wheel = IsSelectingMetal ? scroll.ReadValue<float>() : 0;
+        // 攜帶中（按住右鍵、拉來的輕金屬已貼在身上）時，滾輪向前（推）會把它射出去。
+        manipulator.AimCamera = ViewCamera;
+        float wheel = IsSelectingMetal || manipulator.IsCarrying ? scroll.ReadValue<float>() : 0;
         if (enemyManipulator.HandleInput(held, wheel, selector.CurrentEnemy, selector.EnemyHit.point)
             && characterAnimation)
             characterAnimation.PlayMetalAbility(wheel > 0 ? MetalType.Zinc : MetalType.Brass);
         bool wasManipulating = manipulator.IsLocked;
+        int launchesBefore = manipulator.LaunchCount;
         manipulator.HandleInput(held, wheel, selector.Current);
+        if (manipulator.LaunchCount != launchesBefore && characterAnimation)
+            characterAnimation.PlayMetalAbility(MetalType.Steel);
         if (!wasManipulating && manipulator.IsLocked && characterAnimation)
             characterAnimation.PlayMetalAbility(manipulator.IsPull ? MetalType.Iron : MetalType.Steel);
         // Successful use consumes this button hold, even if the ability later breaks range.
@@ -321,10 +360,24 @@ public class PlayerController : MonoBehaviour
         bool show = (display.IsPressed() || IsSelectingMetal)
             && (inventory.CanUse(MetalType.Iron)
             || inventory.CanUse(MetalType.Steel));
+        // 攜帶中：不再顯示所有金屬的外框（藍線也隱藏），只標示出攜帶的那個物品。
+        MetalDisplayer carried = manipulator.IsCarrying ? manipulator.Target.Metal : null;
         foreach (var metal in MetalDisplayer.ActiveMetals)
         {
             metal.Unhighlight();
-            if (show)
+            if (carried)
+            {
+                if (metal == carried)
+                {
+                    metal.Display();
+                    metal.Highlight();
+                }
+                else
+                {
+                    metal.Undisplay();
+                }
+            }
+            else if (show)
             {
                 metal.Display();
             }
@@ -344,7 +397,9 @@ public class PlayerController : MonoBehaviour
     {
         // Slow motion only while choosing a target; it ends once an ability is activated this hold.
         // Apply after input updates so closing the wheel cannot overwrite ability slow motion.
-        SetAbilitySlowMotion(IsSelectingMetal && ViewCamera && !(health && health.IsDead)
+        // 已經鎖定目標（推 / 拉進行中）或已發動過敵人金屬能力，就算右鍵還按著也不再慢動作。
+        bool aimingOnly = IsSelectingMetal && !manipulator.IsLocked && !enemyManipulator.HasActivatedThisHold;
+        SetAbilitySlowMotion(aimingOnly && ViewCamera && !(health && health.IsDead)
             && !(metalBurningWheel && metalBurningWheel.IsOpen));
         if (ViewCamera)
         {
@@ -390,6 +445,12 @@ public class PlayerController : MonoBehaviour
 
     private void OnDisable()
     {
+        if (health)
+        {
+            health.Damaged -= OnDamaged;
+        }
+
+        focusInterrupted = false;
         SetAbilitySlowMotion(false);
         if (cameraController) cameraController.RestoreFieldOfView();
         if (characterAnimation) characterAnimation.StopMetalAbility();

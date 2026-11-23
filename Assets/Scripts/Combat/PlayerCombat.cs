@@ -187,7 +187,8 @@ public class PlayerCombat : MonoBehaviour
             {
                 if (pewter && pewter.IsActive && !obstacle.IsBroken && !hitObstacles.Contains(obstacle))
                 {
-                    var point = obstacle.TargetPoint;
+                    // 用表面最近點判定（大型障礙如整面門，中心點離玩家太遠會永遠打不到）。
+                    var point = obstacle.ClosestPointTo(origin);
                     var offset = point - origin;
                     if (offset.magnitude <= ActiveAttack.AttackRange && Vector3.Angle(transform.forward, offset) <= ActiveAttack.AttackAngle
                         && CombatSight.Clear(
@@ -211,7 +212,7 @@ public class PlayerCombat : MonoBehaviour
             }
 
             var delta = enemy.TargetPoint - origin;
-            if (delta.magnitude > ActiveAttack.AttackRange || Vector3.Angle(transform.forward, delta) > ActiveAttack.AttackAngle
+            if (delta.magnitude - enemy.MeleeReachBonus > ActiveAttack.AttackRange || Vector3.Angle(transform.forward, delta) > ActiveAttack.AttackAngle
                 || !CombatSight.Clear(
                 origin,
                 enemy.TargetPoint,

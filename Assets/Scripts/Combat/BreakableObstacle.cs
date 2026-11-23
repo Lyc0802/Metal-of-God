@@ -10,6 +10,10 @@ public class BreakableObstacle : MonoBehaviour
     [Min(0)]
     public float CurrentHealth = 60;
     public bool IsBroken { get; private set; }
+    [Tooltip("打破後是否直接把物件銷毀。關閉時物件保留（碰撞與導航障礙會關掉），給大門等有開啟動畫的物件使用。")]
+    public bool DestroyOnBreak = true;
+    /// <summary>被打破的瞬間觸發（物件保留時才有意義）。</summary>
+    public event System.Action Broken;
 
     public Vector3 TargetPoint
     {
@@ -18,6 +22,35 @@ public class BreakableObstacle : MonoBehaviour
             var c = GetComponent<Collider>();
             return c ? c.bounds.center : transform.position;
         }
+    }
+
+    /// <summary>
+    /// 距離 from 最近的表面點。大型障礙（整面門）的碰撞箱中心離玩家很遠，
+    /// 用中心點算揮劍距離會永遠打不到，所以近戰判定要用表面最近點。
+    /// </summary>
+    public Vector3 ClosestPointTo(Vector3 from)
+    {
+        bool found = false;
+        Vector3 best = TargetPoint;
+        float bestDistance = float.PositiveInfinity;
+        foreach (var c in GetComponentsInChildren<Collider>())
+        {
+            if (!c.enabled || c.isTrigger)
+            {
+                continue;
+            }
+
+            Vector3 p = c.ClosestPoint(from);
+            float d = (p - from).sqrMagnitude;
+            if (d < bestDistance)
+            {
+                bestDistance = d;
+                best = p;
+                found = true;
+            }
+        }
+
+        return found ? best : TargetPoint;
     }
 
     private void Awake()
@@ -61,6 +94,10 @@ public class BreakableObstacle : MonoBehaviour
             obstacle.enabled = false;
         }
 
-        Destroy(gameObject);
+        Broken?.Invoke();
+        if (DestroyOnBreak)
+        {
+            Destroy(gameObject);
+        }
     }
 }
