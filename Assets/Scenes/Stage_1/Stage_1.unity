@@ -127,6 +127,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 488818141096384565, guid: 75cab173f634fa944baf21fc0661fb7e, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 896763396750647374, guid: 75cab173f634fa944baf21fc0661fb7e, type: 3}
       propertyPath: m_Pitch
       value: 1.02
@@ -183,6 +187,10 @@ PrefabInstance:
       propertyPath: m_Volume
       value: 0.052
       objectReference: {fileID: 0}
+    - target: {fileID: 3737718078184153431, guid: 75cab173f634fa944baf21fc0661fb7e, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 4202423928711968248, guid: 75cab173f634fa944baf21fc0661fb7e, type: 3}
       propertyPath: m_Enabled
       value: 1
@@ -234,6 +242,10 @@ PrefabInstance:
     - target: {fileID: 6407789993294045593, guid: 75cab173f634fa944baf21fc0661fb7e, type: 3}
       propertyPath: m_Name
       value: Player
+      objectReference: {fileID: 0}
+    - target: {fileID: 7628721969639291595, guid: 75cab173f634fa944baf21fc0661fb7e, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 8199320373386975784, guid: 75cab173f634fa944baf21fc0661fb7e, type: 3}
       propertyPath: InitialModule.startSizeY.minMaxState
