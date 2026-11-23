@@ -1228,6 +1228,9 @@ GameObject:
   - component: {fileID: 1308835214608819034}
   - component: {fileID: 4202423928711968248}
   - component: {fileID: 7447665586283024102}
+  - component: {fileID: 4344761935322810403}
+  - component: {fileID: 5129404544749389473}
+  - component: {fileID: 3295011890846913084}
   m_Layer: 3
   m_Name: Player
   m_TagString: Player
@@ -4055,6 +4058,63 @@ MonoBehaviour:
   MaxForearmTwist: 110
   LogPalm: 1
   OpenHandWeight: 0.8
+--- !u!114 &4344761935322810403
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6407789993294045593}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe6b19e663a415248a811b3f1377b395, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MetalAimLines
+  LineColor: {r: 0.55, g: 0.82, b: 1, a: 0.4}
+  SelectedColor: {r: 0.8, g: 0.95, b: 1, a: 0.95}
+  Width: 0.02
+  SelectedWidth: 0.045
+  PushColor: {r: 1, g: 0.7, b: 0.3, a: 1}
+  PullColor: {r: 0.45, g: 1, b: 0.95, a: 1}
+  PulseWidth: 0.06
+  PulseFade: 0.18
+  ImpactSpeed: 8
+  RingRadius: 1.4
+  RingTime: 0.3
+--- !u!114 &5129404544749389473
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6407789993294045593}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7f19fc75d136fe247a4f3fec844152a7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DamageVignette
+  Color: {r: 0.85, g: 0.02, b: 0.02, a: 1}
+  FullDamage: 30
+  MinimumIntensity: 0.35
+  MaximumIntensity: 0.95
+  FadeTime: 0.8
+  LowHealthRatio: 0.3
+  LowHealthIntensity: 0.25
+--- !u!114 &3295011890846913084
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6407789993294045593}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2791c2f8b13a83c42b82655ff32eb79b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DeathReload
+  Delay: 1.4
+  FadeOut: 1.2
+  FadeIn: 1.2
 --- !u!1 &7628721969639291595
 GameObject:
   m_ObjectHideFlags: 0
